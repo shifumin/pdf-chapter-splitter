@@ -22,31 +22,46 @@ class PDFChapterSplitter
     chapters = extract_chapters
     error_exit "Error: No outline found in the PDF file." if chapters.nil? || chapters.empty?
 
-    # Filter to first level chapters only
-    first_level_chapters = chapters.select { |ch| ch[:level].zero? }
-    log "Found #{first_level_chapters.size} top-level chapters"
+    # Validate and adjust depth
+    max_depth = chapters.map { |ch| ch[:level] }.max + 1
+    actual_depth = [@options[:depth], max_depth].min
+
+    if @options[:depth] > max_depth
+      log "[INFO] 指定された階層 #{@options[:depth]} はPDFの最大階層 #{max_depth} を超えています。階層 #{max_depth} で分割します。"
+    end
+
+    log "[INFO] PDFの解析を開始します..." if @options[:verbose]
+    log "[INFO] 階層#{actual_depth}まで分割します" if @options[:verbose]
+
+    # Filter chapters based on depth
+    filtered_chapters = filter_chapters_by_depth(chapters, actual_depth)
+    log "Found #{filtered_chapters.size} chapters at depth #{actual_depth}"
 
     if @options[:dry_run]
-      display_dry_run_info(first_level_chapters)
+      display_dry_run_info(filtered_chapters)
     else
       prepare_output_directory
-      split_pdf(first_level_chapters)
+      split_pdf(filtered_chapters)
     end
 
     log "Done!"
   rescue StandardError => e
-    error_exit "Error: #{e.message}"
+    error_exit "Error: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
   end
 
   private
 
   def parse_options
-    options = { verbose: false, dry_run: false, force: false }
+    options = { verbose: false, dry_run: false, force: false, depth: 1 }
 
     parser = OptionParser.new do |opts|
       opts.banner = "Usage: #{File.basename($PROGRAM_NAME)} [options] PDF_FILE"
       opts.separator ""
       opts.separator "Options:"
+
+      opts.on("-d", "--depth LEVEL", Integer, "Split at specified depth level (default: 1)") do |d|
+        options[:depth] = d
+      end
 
       opts.on("-n", "--dry-run", "Show what would be done without doing it") do
         options[:dry_run] = true
@@ -67,6 +82,13 @@ class PDFChapterSplitter
     end
 
     parser.parse!
+
+    # Validate depth option
+    if options[:depth] < 1
+      warn "Error: Depth must be at least 1"
+      exit 1
+    end
+
     options
   end
 
@@ -78,6 +100,50 @@ class PDFChapterSplitter
     return if @pdf_path.downcase.end_with?(".pdf")
 
     error_exit "Error: The file must be a PDF"
+  end
+
+  def filter_chapters_by_depth(chapters, depth)
+    return [] if chapters.empty?
+
+    filtered = []
+    chapters_with_children = {}
+
+    # Build parent-child relationships
+    chapters.each_with_index do |chapter, idx|
+      parent_indices = []
+
+      # Find all parent chapters for this chapter
+      (0...idx).reverse_each do |i|
+        if chapters[i][:level] < chapter[:level]
+          parent_indices << i
+          break if chapters[i][:level].zero?
+        end
+      end
+
+      chapter[:parent_indices] = parent_indices
+      chapter[:original_index] = idx
+    end
+
+    # For each chapter at target depth, check if it has children
+    chapters.each_with_index do |chapter, idx|
+      if chapter[:level] < depth - 1
+        # Check if this chapter has children at the target depth
+        has_target_depth_children = chapters.any? do |ch|
+          ch[:parent_indices] && ch[:parent_indices].include?(idx) && ch[:level] == depth - 1
+        end
+        chapters_with_children[idx] = has_target_depth_children
+      elsif chapter[:level] == depth - 1
+        filtered << chapter
+      end
+    end
+
+    # Add chapters without target-depth children
+    chapters.each_with_index do |chapter, idx|
+      filtered << chapter if chapter[:level] < depth - 1 && !chapters_with_children[idx]
+    end
+
+    # Sort by original appearance order
+    filtered.sort_by { |ch| ch[:original_index] }
   end
 
   def extract_chapters
@@ -215,49 +281,75 @@ class PDFChapterSplitter
   def display_dry_run_info(chapters)
     puts "\n=== Dry Run Mode ==="
     puts "The following files would be created in '#{output_dir}/#{CHAPTERS_DIR}/':"
+    puts "Split depth: #{@options[:depth]}"
     puts
 
     reader = PDF::Reader.new(@pdf_path)
     total_pages = reader.page_count
+    all_chapters = extract_chapters
+
+    # Sort filtered chapters by page number
+    sorted_chapters = chapters.sort_by { |ch| ch[:page] || 0 }
+
+    file_count = 0
 
     # Check for front matter
-    if chapters.first && chapters.first[:page] && chapters.first[:page] > 1
+    first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
+    if first_page > 1
       filename = "00_前付け.pdf"
-      pages = "1-#{chapters.first[:page] - 1}"
+      pages = "1-#{first_page - 1}"
       puts "  #{filename} (pages #{pages})"
+      file_count += 1
     end
 
     # Process chapters
-    chapters.each_with_index do |chapter, index|
-      next_chapter = chapters[index + 1]
-
+    sorted_chapters.each_with_index do |chapter, index|
       start_page = chapter[:page] || 1
-      end_page = if next_chapter && next_chapter[:page]
-                   next_chapter[:page] - 1
+      end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
+
+      # Format filename with parent context if depth > 1
+      filename = if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
+                   parent_idx = chapter[:parent_indices].last
+                   parent_title = all_chapters[parent_idx][:title] if parent_idx
+                   format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
                  else
-                   total_pages
+                   format_chapter_filename(index + 1, chapter[:title])
                  end
 
-      filename = format_chapter_filename(index + 1, chapter[:title])
       puts "  #{filename} (pages #{start_page}-#{end_page})"
+
+      # Verbose info for special cases
+      next unless @options[:verbose]
+
+      # Check if parent starts at same page
+      if chapter[:parent_indices] && !chapter[:parent_indices].empty?
+        parent_idx = chapter[:parent_indices].last
+        parent = all_chapters[parent_idx]
+        if parent[:page] == chapter[:page]
+          puts "    [INFO] #{parent[:title]}と#{chapter[:title]}が同じページ（#{chapter[:page]}）から開始しています"
+        end
+      end
+
+      # Check if chapter has no sub-sections at target depth
+      if chapter[:level] < @options[:depth] - 1
+        puts "    [INFO] #{chapter[:title]}にはレベル#{@options[:depth]}のサブセクションがありません。章全体を出力します"
+      end
     end
 
     # Check for appendix
-    last_chapter_end = if chapters.last && chapters.last[:page]
-                         # Find the end of the last chapter
-                         chapters.last[:page]
-                       else
-                         1
-                       end
+    unless sorted_chapters.empty?
+      last_sorted_chapter = sorted_chapters.max_by { |ch| ch[:page] || 0 }
+      last_page = find_chapter_end_page(last_sorted_chapter, all_chapters, total_pages)
 
-    # Estimate last chapter end (simplified - in real case we'd calculate properly)
-    if last_chapter_end < total_pages
-      filename = "99_付録.pdf"
-      pages = "#{last_chapter_end + 1}-#{total_pages}"
-      puts "  #{filename} (pages #{pages})"
+      if last_page < total_pages
+        filename = "99_付録.pdf"
+        pages = "#{last_page + 1}-#{total_pages}"
+        puts "  #{filename} (pages #{pages})"
+        file_count += 1
+      end
     end
 
-    puts "\nTotal chapters to create: #{chapters.size + (chapters.first[:page] > 1 ? 1 : 0) + (last_chapter_end < total_pages ? 1 : 0)}"
+    puts "\nTotal files to create: #{sorted_chapters.size + file_count}"
   end
 
   def prepare_output_directory
@@ -279,39 +371,83 @@ class PDFChapterSplitter
   def split_pdf(chapters)
     doc = HexaPDF::Document.open(@pdf_path)
     total_pages = doc.pages.count
+    all_chapters = extract_chapters # Get all chapters for context
+
+    # Sort filtered chapters by page number
+    sorted_chapters = chapters.sort_by { |ch| ch[:page] || 0 }
 
     # Process front matter if exists
-    if chapters.first && chapters.first[:page] && chapters.first[:page] > 1
+    first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
+    if first_page > 1
       log "Extracting front matter..." if @options[:verbose]
-      extract_pages(doc, 1, chapters.first[:page] - 1, "00_前付け.pdf")
+      extract_pages(doc, 1, first_page - 1, "00_前付け.pdf")
     end
 
     # Process each chapter
-    chapters.each_with_index do |chapter, index|
-      next_chapter = chapters[index + 1]
-
+    sorted_chapters.each_with_index do |chapter, index|
       start_page = chapter[:page] || 1
-      end_page = if next_chapter && next_chapter[:page]
-                   next_chapter[:page] - 1
+
+      # Find end page based on all chapters
+      end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
+
+      # Format filename with parent context if depth > 1
+      filename = if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
+                   parent_idx = chapter[:parent_indices].last
+                   parent_title = all_chapters[parent_idx][:title] if parent_idx
+                   format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
                  else
-                   total_pages
+                   format_chapter_filename(index + 1, chapter[:title])
                  end
 
-      filename = format_chapter_filename(index + 1, chapter[:title])
       log "Extracting: #{chapter[:title]} (pages #{start_page}-#{end_page})..." if @options[:verbose]
       extract_pages(doc, start_page, end_page, filename)
     end
 
     # Process appendix if exists
-    last_chapter = chapters.last
-    return unless last_chapter && last_chapter[:page]
+    return if sorted_chapters.empty?
 
-    # Simple estimation - in reality we'd need to calculate the actual end of last chapter
-    estimated_last_page = last_chapter[:page] + 20 # This is a simplification
-    return unless estimated_last_page < total_pages
+    last_sorted_chapter = sorted_chapters.max_by { |ch| ch[:page] || 0 }
+    last_page = find_chapter_end_page(last_sorted_chapter, all_chapters, total_pages)
+
+    return unless last_page < total_pages
 
     log "Extracting appendix..." if @options[:verbose]
-    extract_pages(doc, estimated_last_page + 1, total_pages, "99_付録.pdf")
+    extract_pages(doc, last_page + 1, total_pages, "99_付録.pdf")
+  end
+
+  def find_chapter_end_page(chapter, all_chapters, total_pages)
+    current_idx = chapter[:original_index]
+
+    # If original_index is not set, fall back to finding by title and page
+    if current_idx.nil?
+      current_idx = all_chapters.find_index { |ch| ch[:title] == chapter[:title] && ch[:page] == chapter[:page] }
+      return total_pages if current_idx.nil?
+    end
+
+    # Find the next chapter at the same or higher level
+    next_chapter = all_chapters.find do |ch|
+      ch_idx = ch[:original_index] || all_chapters.find_index { |c| c[:title] == ch[:title] && c[:page] == ch[:page] }
+      ch_idx && ch_idx > current_idx && ch[:level] <= chapter[:level]
+    end
+
+    if next_chapter && next_chapter[:page]
+      next_chapter[:page] - 1
+    elsif chapter[:parent_indices] && !chapter[:parent_indices].empty?
+      # If no next chapter at same/higher level, check for parent's next sibling
+      parent_idx = chapter[:parent_indices].last
+      parent_next = all_chapters.find do |ch|
+        ch_idx = ch[:original_index] || all_chapters.find_index { |c| c[:title] == ch[:title] && c[:page] == ch[:page] }
+        ch_idx && ch_idx > parent_idx && ch[:level] <= all_chapters[parent_idx][:level]
+      end
+
+      if parent_next && parent_next[:page]
+        parent_next[:page] - 1
+      else
+        total_pages
+      end
+    else
+      total_pages
+    end
   end
 
   def extract_pages(source_doc, start_page, end_page, filename)
@@ -341,6 +477,21 @@ class PDFChapterSplitter
     clean_title = title.gsub(INVALID_FILENAME_CHARS, "_")
 
     "#{num_str}_#{clean_title}.pdf"
+  end
+
+  def format_chapter_filename_with_parent(number, title, parent_title)
+    # Format number with zero padding
+    num_str = format("%02d", number)
+
+    # Clean titles for filename
+    clean_parent = parent_title ? parent_title.gsub(INVALID_FILENAME_CHARS, "_") : ""
+    clean_title = title.gsub(INVALID_FILENAME_CHARS, "_")
+
+    if parent_title
+      "#{num_str}_#{clean_parent}_#{clean_title}.pdf"
+    else
+      "#{num_str}_#{clean_title}.pdf"
+    end
   end
 
   def output_dir
