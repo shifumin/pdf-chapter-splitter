@@ -202,7 +202,7 @@ RSpec.describe PDFChapterSplitter do
       stdout, = run_script("--verbose", test_pdf)
       expect(stdout).to include("Processing PDF:")
       expect(stdout).to include("Found")
-      expect(stdout).to include("top-level chapters")
+      expect(stdout).to include("chapters at depth")
       expect(stdout).to include("Creating chapters directory")
       expect(stdout).to include("Extracting:")
     end
