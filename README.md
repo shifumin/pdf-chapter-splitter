@@ -6,6 +6,7 @@ A Ruby command-line tool that automatically detects chapter boundaries in PDF fi
 
 - 📖 Automatically detects chapters from PDF outline/bookmarks
 - ✂️ Splits PDF into individual chapter files
+- 🏗️ Flexible depth-based splitting (split by chapters, sections, or subsections)
 - 🇯🇵 Supports Japanese and international character sets
 - 📋 Handles front matter and appendices
 - 🔍 Dry-run mode to preview splitting before execution
@@ -46,10 +47,11 @@ This will:
 ### Command Line Options
 
 ```bash
--n, --dry-run    # Preview what would be done without actually splitting
--f, --force      # Remove existing chapters/ directory if it exists
--v, --verbose    # Show detailed progress information
--h, --help       # Display help message
+-d, --depth LEVEL  # Split at specified depth level (default: 1)
+-n, --dry-run      # Preview what would be done without actually splitting
+-f, --force        # Remove existing chapters/ directory if it exists
+-v, --verbose      # Show detailed progress information
+-h, --help         # Display help message
 ```
 
 ### Examples
@@ -57,6 +59,11 @@ This will:
 Preview splitting without creating files:
 ```bash
 bundle exec ruby pdf_chapter_splitter.rb -n document.pdf
+```
+
+Split at section level (depth 2):
+```bash
+bundle exec ruby pdf_chapter_splitter.rb -d 2 document.pdf
 ```
 
 Force overwrite existing output:
@@ -69,9 +76,9 @@ Show detailed progress:
 bundle exec ruby pdf_chapter_splitter.rb -v document.pdf
 ```
 
-Combine options:
+Combine options (preview section-level split with verbose output):
 ```bash
-bundle exec ruby pdf_chapter_splitter.rb -n -v document.pdf
+bundle exec ruby pdf_chapter_splitter.rb -d 2 -n -v document.pdf
 ```
 
 ## Output Format
@@ -83,14 +90,23 @@ The tool creates files with the following naming convention:
 - `02_Next_Chapter.pdf` - Sequential numbering for each chapter
 - `99_付録.pdf` - Appendix (pages after the last chapter)
 
+When splitting at deeper levels (e.g., `-d 2`), filenames include parent context:
+- `01_Chapter_1_Section_1.1.pdf`
+- `02_Chapter_1_Section_1.2.pdf`
+- `03_Chapter_2_Section_2.1.pdf`
+
 Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automatically replaced with underscores.
 
 ## How It Works
 
 1. **Outline Detection**: The tool reads the PDF's built-in outline/bookmark structure
-2. **Chapter Identification**: Only top-level outline items are treated as chapters
-3. **Page Range Calculation**: Determines the page range for each chapter
-4. **PDF Splitting**: Creates new PDF files for each chapter, preserving metadata
+2. **Chapter Identification**: Identifies chapters at the specified depth level (default: top-level)
+3. **Intelligent Splitting**:
+   - At depth 1: Splits by top-level chapters
+   - At depth 2+: Splits by sections/subsections
+   - If a chapter has no subsections at the target depth, outputs the entire chapter
+4. **Page Range Calculation**: Determines the page range for each split section
+5. **PDF Splitting**: Creates new PDF files for each section, preserving metadata
 
 ## Requirements for PDFs
 
@@ -123,6 +139,11 @@ bundle exec ruby spec/support/generate_test_pdfs.rb
 
 ### "No outline found in the PDF file"
 The PDF doesn't have bookmarks/outline. This tool requires PDFs with proper chapter structure.
+
+### Depth level considerations
+- The tool automatically adjusts if the specified depth exceeds the PDF's maximum depth
+- Chapters without subsections at the target depth are output as complete chapters
+- Use verbose mode (`-v`) to see informational messages about these adjustments
 
 ### "chapters directory already exists"
 Use the `--force` option to overwrite existing output, or manually remove the directory.
