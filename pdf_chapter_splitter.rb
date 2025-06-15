@@ -19,34 +19,59 @@ class PDFChapterSplitter
   def run
     log "Processing PDF: #{@pdf_path}"
 
+    chapters = extract_and_validate_chapters
+    actual_depth = determine_actual_depth(chapters)
+    filtered_chapters = prepare_chapters_for_processing(chapters, actual_depth)
+
+    execute_processing(filtered_chapters)
+
+    log "Done!"
+  rescue StandardError => e
+    error_exit "Error: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
+  end
+
+  def extract_and_validate_chapters
     chapters = extract_chapters
     error_exit "Error: No outline found in the PDF file." if chapters.nil? || chapters.empty?
+    chapters
+  end
 
-    # Validate and adjust depth
-    max_depth = chapters.map { |ch| ch[:level] }.max + 1
+  def determine_actual_depth(chapters)
+    max_depth = calculate_max_depth(chapters)
     actual_depth = [@options[:depth], max_depth].min
 
-    if @options[:depth] > max_depth
-      log "[INFO] 指定された階層 #{@options[:depth]} はPDFの最大階層 #{max_depth} を超えています。階層 #{max_depth} で分割します。"
-    end
+    log_depth_adjustment(max_depth) if @options[:depth] > max_depth
+    log_processing_info(actual_depth) if @options[:verbose]
 
-    log "[INFO] PDFの解析を開始します..." if @options[:verbose]
-    log "[INFO] 階層#{actual_depth}まで分割します" if @options[:verbose]
+    actual_depth
+  end
 
-    # Filter chapters based on depth
+  def calculate_max_depth(chapters)
+    chapters.map { |ch| ch[:level] }.max + 1
+  end
+
+  def log_depth_adjustment(max_depth)
+    log "[INFO] 指定された階層 #{@options[:depth]} はPDFの最大階層 #{max_depth} を超えています。階層 #{max_depth} で分割します。"
+  end
+
+  def log_processing_info(actual_depth)
+    log "[INFO] PDFの解析を開始します..."
+    log "[INFO] 階層#{actual_depth}まで分割します"
+  end
+
+  def prepare_chapters_for_processing(chapters, actual_depth)
     filtered_chapters = filter_chapters_by_depth(chapters, actual_depth)
     log "Found #{filtered_chapters.size} chapters at depth #{actual_depth}"
+    filtered_chapters
+  end
 
+  def execute_processing(filtered_chapters)
     if @options[:dry_run]
       display_dry_run_info(filtered_chapters)
     else
       prepare_output_directory
       split_pdf(filtered_chapters)
     end
-
-    log "Done!"
-  rescue StandardError => e
-    error_exit "Error: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
   end
 
   private
@@ -54,7 +79,14 @@ class PDFChapterSplitter
   def parse_options
     options = { verbose: false, dry_run: false, force: false, depth: 1 }
 
-    parser = OptionParser.new do |opts|
+    create_option_parser(options).parse!
+    validate_depth_option(options[:depth])
+
+    options
+  end
+
+  def create_option_parser(options)
+    OptionParser.new do |opts|
       opts.banner = "Usage: #{File.basename($PROGRAM_NAME)} [options] PDF_FILE"
       opts.separator ""
       opts.separator "Options:"
@@ -80,16 +112,13 @@ class PDFChapterSplitter
         exit
       end
     end
+  end
 
-    parser.parse!
+  def validate_depth_option(depth)
+    return if depth >= 1
 
-    # Validate depth option
-    if options[:depth] < 1
-      warn "Error: Depth must be at least 1"
-      exit 1
-    end
-
-    options
+    warn "Error: Depth must be at least 1"
+    exit 1
   end
 
   def validate_input!
@@ -105,60 +134,81 @@ class PDFChapterSplitter
   def filter_chapters_by_depth(chapters, depth)
     return [] if chapters.empty?
 
-    filtered = []
-    chapters_with_children = {}
+    build_parent_child_relationships(chapters)
+    select_chapters_at_depth(chapters, depth)
+  end
 
-    # Build parent-child relationships
+  def build_parent_child_relationships(chapters)
     chapters.each_with_index do |chapter, idx|
-      parent_indices = []
-
-      # Find all parent chapters for this chapter
-      (0...idx).reverse_each do |i|
-        if chapters[i][:level] < chapter[:level]
-          parent_indices << i
-          break if chapters[i][:level].zero?
-        end
-      end
-
-      chapter[:parent_indices] = parent_indices
+      chapter[:parent_indices] = find_parent_indices(chapters, idx, chapter[:level])
       chapter[:original_index] = idx
     end
+  end
 
-    # For each chapter at target depth, check if it has children
-    chapters.each_with_index do |chapter, idx|
-      if chapter[:level] < depth - 1
-        # Check if this chapter has children at the target depth
-        has_target_depth_children = chapters.any? do |ch|
-          ch[:parent_indices] && ch[:parent_indices].include?(idx) && ch[:level] == depth - 1
-        end
-        chapters_with_children[idx] = has_target_depth_children
-      elsif chapter[:level] == depth - 1
-        filtered << chapter
+  def find_parent_indices(chapters, current_idx, current_level)
+    parent_indices = []
+
+    (0...current_idx).reverse_each do |i|
+      if chapters[i][:level] < current_level
+        parent_indices << i
+        break if chapters[i][:level].zero?
       end
     end
 
-    # Add chapters without target-depth children
+    parent_indices
+  end
+
+  def select_chapters_at_depth(chapters, depth)
+    filtered = []
+    chapters_with_children = identify_chapters_with_target_depth_children(chapters, depth)
+
     chapters.each_with_index do |chapter, idx|
-      filtered << chapter if chapter[:level] < depth - 1 && !chapters_with_children[idx]
+      filtered << chapter if should_include_chapter?(chapter, idx, depth, chapters_with_children)
     end
 
-    # Sort by original appearance order
     filtered.sort_by { |ch| ch[:original_index] }
+  end
+
+  def identify_chapters_with_target_depth_children(chapters, depth)
+    chapters_with_children = {}
+
+    chapters.each_with_index do |chapter, idx|
+      next unless chapter[:level] < depth - 1
+
+      chapters_with_children[idx] = children_at_depth?(chapters, idx, depth - 1)
+    end
+
+    chapters_with_children
+  end
+
+  def children_at_depth?(chapters, parent_idx, target_depth)
+    chapters.any? do |ch|
+      ch[:parent_indices]&.include?(parent_idx) && ch[:level] == target_depth
+    end
+  end
+
+  def should_include_chapter?(chapter, idx, depth, chapters_with_children)
+    return true if chapter[:level] == depth - 1
+
+    chapter[:level] < depth - 1 && !chapters_with_children[idx]
   end
 
   def extract_chapters
     reader = PDF::Reader.new(@pdf_path)
-    outline_root = find_outline_root(reader)
+    extract_chapters_from_reader(reader)
+  rescue PDF::Reader::MalformedPDFError => e
+    error_exit "Error: Malformed PDF - #{e.message}"
+  rescue StandardError => e
+    error_exit "Error reading PDF: #{e.message}"
+  end
 
+  def extract_chapters_from_reader(reader)
+    outline_root = find_outline_root(reader)
     return nil unless outline_root
 
     chapters = []
     parse_outline_item(reader, outline_root[:First], chapters, 0)
     chapters
-  rescue PDF::Reader::MalformedPDFError => e
-    error_exit "Error: Malformed PDF - #{e.message}"
-  rescue StandardError => e
-    error_exit "Error reading PDF: #{e.message}"
   end
 
   def find_outline_root(reader)
@@ -279,77 +329,99 @@ class PDFChapterSplitter
   end
 
   def display_dry_run_info(chapters)
-    puts "\n=== Dry Run Mode ==="
-    puts "The following files would be created in '#{output_dir}/#{CHAPTERS_DIR}/':"
-    puts "Split depth: #{@options[:depth]}"
-    puts
+    display_dry_run_header
 
     reader = PDF::Reader.new(@pdf_path)
     total_pages = reader.page_count
     all_chapters = extract_chapters
-
-    # Sort filtered chapters by page number
     sorted_chapters = chapters.sort_by { |ch| ch[:page] || 0 }
 
     file_count = 0
-
-    # Check for front matter
-    first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
-    if first_page > 1
-      filename = "00_前付け.pdf"
-      pages = "1-#{first_page - 1}"
-      puts "  #{filename} (pages #{pages})"
-      file_count += 1
-    end
-
-    # Process chapters
-    sorted_chapters.each_with_index do |chapter, index|
-      start_page = chapter[:page] || 1
-      end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
-
-      # Format filename with parent context if depth > 1
-      filename = if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
-                   parent_idx = chapter[:parent_indices].last
-                   parent_title = all_chapters[parent_idx][:title] if parent_idx
-                   format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
-                 else
-                   format_chapter_filename(index + 1, chapter[:title])
-                 end
-
-      puts "  #{filename} (pages #{start_page}-#{end_page})"
-
-      # Verbose info for special cases
-      next unless @options[:verbose]
-
-      # Check if parent starts at same page
-      if chapter[:parent_indices] && !chapter[:parent_indices].empty?
-        parent_idx = chapter[:parent_indices].last
-        parent = all_chapters[parent_idx]
-        if parent[:page] == chapter[:page]
-          puts "    [INFO] #{parent[:title]}と#{chapter[:title]}が同じページ（#{chapter[:page]}）から開始しています"
-        end
-      end
-
-      # Check if chapter has no sub-sections at target depth
-      if chapter[:level] < @options[:depth] - 1
-        puts "    [INFO] #{chapter[:title]}にはレベル#{@options[:depth]}のサブセクションがありません。章全体を出力します"
-      end
-    end
-
-    # Check for appendix
-    unless sorted_chapters.empty?
-      last_sorted_chapter = sorted_chapters.max_by { |ch| ch[:page] || 0 }
-      last_page = find_chapter_end_page(last_sorted_chapter, all_chapters, total_pages)
-
-      if last_page < total_pages
-        filename = "99_付録.pdf"
-        pages = "#{last_page + 1}-#{total_pages}"
-        puts "  #{filename} (pages #{pages})"
-        file_count += 1
-      end
-    end
+    file_count += display_front_matter_info(sorted_chapters)
+    display_chapters_info(sorted_chapters, all_chapters, total_pages)
+    file_count += display_appendix_info(sorted_chapters, all_chapters, total_pages)
 
     puts "\nTotal files to create: #{sorted_chapters.size + file_count}"
+  end
+
+  def display_dry_run_header
+    puts "\n=== Dry Run Mode ==="
+    puts "The following files would be created in '#{output_dir}/#{CHAPTERS_DIR}/':"
+    puts "Split depth: #{@options[:depth]}"
+    puts
+  end
+
+  def display_front_matter_info(sorted_chapters)
+    first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
+    return 0 unless first_page > 1
+
+    filename = "00_前付け.pdf"
+    pages = "1-#{first_page - 1}"
+    puts "  #{filename} (pages #{pages})"
+    1
+  end
+
+  def display_chapters_info(sorted_chapters, all_chapters, total_pages)
+    sorted_chapters.each_with_index do |chapter, index|
+      display_single_chapter_info(chapter, index, all_chapters, total_pages)
+    end
+  end
+
+  def display_single_chapter_info(chapter, index, all_chapters, total_pages)
+    start_page = chapter[:page] || 1
+    end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
+    filename = format_chapter_filename_for_display(chapter, index, all_chapters)
+
+    puts "  #{filename} (pages #{start_page}-#{end_page})"
+
+    return unless @options[:verbose]
+
+    display_verbose_warnings(chapter, all_chapters)
+  end
+
+  def format_chapter_filename_for_display(chapter, index, all_chapters)
+    if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
+      parent_idx = chapter[:parent_indices].last
+      parent_title = all_chapters[parent_idx][:title] if parent_idx
+      format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
+    else
+      format_chapter_filename(index + 1, chapter[:title])
+    end
+  end
+
+  def display_verbose_warnings(chapter, all_chapters)
+    check_same_page_start(chapter, all_chapters)
+    check_missing_subsections(chapter)
+  end
+
+  def check_same_page_start(chapter, all_chapters)
+    return unless chapter[:parent_indices] && !chapter[:parent_indices].empty?
+
+    parent_idx = chapter[:parent_indices].last
+    parent = all_chapters[parent_idx]
+    return unless parent[:page] == chapter[:page]
+
+    puts "    [INFO] #{parent[:title]}と#{chapter[:title]}が同じページ（#{chapter[:page]}）から開始しています"
+  end
+
+  def check_missing_subsections(chapter)
+    return unless chapter[:level] < @options[:depth] - 1
+
+    puts "    [INFO] #{chapter[:title]}にはレベル#{@options[:depth]}のサブセクションがありません。章全体を出力します"
+  end
+
+  def display_appendix_info(sorted_chapters, all_chapters, total_pages)
+    return 0 if sorted_chapters.empty?
+
+    last_sorted_chapter = sorted_chapters.max_by { |ch| ch[:page] || 0 }
+    last_page = find_chapter_end_page(last_sorted_chapter, all_chapters, total_pages)
+
+    return 0 unless last_page < total_pages
+
+    filename = "99_付録.pdf"
+    pages = "#{last_page + 1}-#{total_pages}"
+    puts "  #{filename} (pages #{pages})"
+    1
   end
 
   def prepare_output_directory
@@ -371,39 +443,48 @@ class PDFChapterSplitter
   def split_pdf(chapters)
     doc = HexaPDF::Document.open(@pdf_path)
     total_pages = doc.pages.count
-    all_chapters = extract_chapters # Get all chapters for context
-
-    # Sort filtered chapters by page number
+    all_chapters = extract_chapters
     sorted_chapters = chapters.sort_by { |ch| ch[:page] || 0 }
 
-    # Process front matter if exists
+    process_front_matter(doc, sorted_chapters)
+    process_chapters(doc, sorted_chapters, all_chapters, total_pages)
+    process_appendix(doc, sorted_chapters, all_chapters, total_pages)
+  end
+
+  def process_front_matter(doc, sorted_chapters)
     first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
-    if first_page > 1
-      log "Extracting front matter..." if @options[:verbose]
-      extract_pages(doc, 1, first_page - 1, "00_前付け.pdf")
-    end
+    return unless first_page > 1
 
-    # Process each chapter
+    log "Extracting front matter..." if @options[:verbose]
+    extract_pages(doc, 1, first_page - 1, "00_前付け.pdf")
+  end
+
+  def process_chapters(doc, sorted_chapters, all_chapters, total_pages)
     sorted_chapters.each_with_index do |chapter, index|
-      start_page = chapter[:page] || 1
-
-      # Find end page based on all chapters
-      end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
-
-      # Format filename with parent context if depth > 1
-      filename = if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
-                   parent_idx = chapter[:parent_indices].last
-                   parent_title = all_chapters[parent_idx][:title] if parent_idx
-                   format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
-                 else
-                   format_chapter_filename(index + 1, chapter[:title])
-                 end
-
-      log "Extracting: #{chapter[:title]} (pages #{start_page}-#{end_page})..." if @options[:verbose]
-      extract_pages(doc, start_page, end_page, filename)
+      process_single_chapter(doc, chapter, index, all_chapters, total_pages)
     end
+  end
 
-    # Process appendix if exists
+  def process_single_chapter(doc, chapter, index, all_chapters, total_pages)
+    start_page = chapter[:page] || 1
+    end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
+    filename = build_chapter_filename(chapter, index, all_chapters)
+
+    log "Extracting: #{chapter[:title]} (pages #{start_page}-#{end_page})..." if @options[:verbose]
+    extract_pages(doc, start_page, end_page, filename)
+  end
+
+  def build_chapter_filename(chapter, index, all_chapters)
+    if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
+      parent_idx = chapter[:parent_indices].last
+      parent_title = all_chapters[parent_idx][:title] if parent_idx
+      format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
+    else
+      format_chapter_filename(index + 1, chapter[:title])
+    end
+  end
+
+  def process_appendix(doc, sorted_chapters, all_chapters, total_pages)
     return if sorted_chapters.empty?
 
     last_sorted_chapter = sorted_chapters.max_by { |ch| ch[:page] || 0 }
@@ -416,35 +497,45 @@ class PDFChapterSplitter
   end
 
   def find_chapter_end_page(chapter, all_chapters, total_pages)
-    current_idx = chapter[:original_index]
+    current_idx = get_chapter_index(chapter, all_chapters)
+    return total_pages if current_idx.nil?
 
-    # If original_index is not set, fall back to finding by title and page
-    if current_idx.nil?
-      current_idx = all_chapters.find_index { |ch| ch[:title] == chapter[:title] && ch[:page] == chapter[:page] }
-      return total_pages if current_idx.nil?
-    end
-
-    # Find the next chapter at the same or higher level
-    next_chapter = all_chapters.find do |ch|
-      ch_idx = ch[:original_index] || all_chapters.find_index { |c| c[:title] == ch[:title] && c[:page] == ch[:page] }
-      ch_idx && ch_idx > current_idx && ch[:level] <= chapter[:level]
-    end
+    next_chapter = find_next_chapter_at_same_or_higher_level(current_idx, chapter[:level], all_chapters)
 
     if next_chapter && next_chapter[:page]
       next_chapter[:page] - 1
-    elsif chapter[:parent_indices] && !chapter[:parent_indices].empty?
-      # If no next chapter at same/higher level, check for parent's next sibling
-      parent_idx = chapter[:parent_indices].last
-      parent_next = all_chapters.find do |ch|
-        ch_idx = ch[:original_index] || all_chapters.find_index { |c| c[:title] == ch[:title] && c[:page] == ch[:page] }
-        ch_idx && ch_idx > parent_idx && ch[:level] <= all_chapters[parent_idx][:level]
-      end
+    elsif parent?(chapter)
+      find_end_page_from_parent(chapter, all_chapters, total_pages)
+    else
+      total_pages
+    end
+  end
 
-      if parent_next && parent_next[:page]
-        parent_next[:page] - 1
-      else
-        total_pages
-      end
+  def get_chapter_index(chapter, all_chapters)
+    return chapter[:original_index] if chapter[:original_index]
+
+    all_chapters.find_index { |ch| ch[:title] == chapter[:title] && ch[:page] == chapter[:page] }
+  end
+
+  def find_next_chapter_at_same_or_higher_level(current_idx, current_level, all_chapters)
+    all_chapters.find do |ch|
+      ch_idx = get_chapter_index(ch, all_chapters)
+      ch_idx && ch_idx > current_idx && ch[:level] <= current_level
+    end
+  end
+
+  def parent?(chapter)
+    chapter[:parent_indices] && !chapter[:parent_indices].empty?
+  end
+
+  def find_end_page_from_parent(chapter, all_chapters, total_pages)
+    parent_idx = chapter[:parent_indices].last
+    parent_level = all_chapters[parent_idx][:level]
+
+    parent_next = find_next_chapter_at_same_or_higher_level(parent_idx, parent_level, all_chapters)
+
+    if parent_next && parent_next[:page]
+      parent_next[:page] - 1
     else
       total_pages
     end
