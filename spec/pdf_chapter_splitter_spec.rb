@@ -20,7 +20,7 @@ RSpec.describe PDFChapterSplitter do
       it "initializes and runs successfully" do
         output_dir = File.dirname(pdf_with_outline)
         chapters_dir = File.join(output_dir, "chapters")
-        FileUtils.rm_rf(chapters_dir) if Dir.exist?(chapters_dir)
+        FileUtils.rm_rf(chapters_dir)
 
         original_argv = ARGV.dup
         ARGV.clear
@@ -40,7 +40,7 @@ RSpec.describe PDFChapterSplitter do
       it "raises error for invalid depth" do
         original_argv = ARGV.dup
         ARGV.clear
-        ARGV.concat(["--depth", "0", pdf_with_outline])
+        ARGV.push("--depth", "0", pdf_with_outline)
 
         expect { described_class.new }.to raise_error(SystemExit)
 
@@ -403,6 +403,61 @@ RSpec.describe PDFChapterSplitter do
         files = Dir.entries(chapters_dir).reject { |f| f.start_with?(".") }
         expect(files.any? { |f| f.include?("Chapter 1_Section") }).to be true
         expect(files.any? { |f| f.include?("Chapter 2_Section") }).to be true
+      end
+    end
+  end
+
+  describe "intermediate level chapters (default behavior)" do
+    let(:test_pdf) do
+      test_file = File.join(temp_dir, "test.pdf")
+      FileUtils.cp(complex_pdf, test_file)
+      test_file
+    end
+
+    context "with depth 3" do
+      it "includes target depth chapters" do
+        stdout, = run_script("--dry-run", "--depth", "3", test_pdf)
+
+        # Should include depth 3 chapters (subsections)
+        expect(stdout).to include("Subsection 1.1.1")
+        expect(stdout).to include("Subsection 1.1.2")
+      end
+
+      it "includes intermediate level chapters by default" do
+        stdout, = run_script("--dry-run", "--depth", "3", test_pdf)
+
+        # Should ALSO include intermediate level chapters (depth 1 and 2)
+        expect(stdout).to include("Chapter 1.pdf")
+        expect(stdout).to include("Chapter 2.pdf")
+        expect(stdout).to include("Section 1.1.pdf")
+        expect(stdout).to include("Section 1.2.pdf")
+      end
+
+      it "reports count of intermediate chapters in verbose mode" do
+        stdout, = run_script("--dry-run", "--depth", "3", "--verbose", test_pdf)
+        expect(stdout).to match(/Found \d+ intermediate level chapters/)
+      end
+    end
+
+    context "with depth 4" do
+      it "includes all parent chapters as intermediate" do
+        stdout, = run_script("--dry-run", "--depth", "4", test_pdf)
+
+        # Should include chapters at all levels
+        expect(stdout).to include("Chapter 1.pdf")
+        expect(stdout).to include("Chapter 2.pdf")
+        expect(stdout).to include("Section 1.1.pdf")
+      end
+    end
+
+    context "with depth 1" do
+      it "does not create intermediate levels since there are none" do
+        stdout, = run_script("--dry-run", "--depth", "1", test_pdf)
+
+        # Should only include top-level chapters
+        expect(stdout).to include("Chapter 1")
+        expect(stdout).to include("Chapter 2")
+        expect(stdout).not_to include("Section")
       end
     end
   end
@@ -1036,6 +1091,57 @@ RSpec.describe PDFChapterSplitter do
       end
     end
 
+    describe "#extract_chapters" do
+      it "extracts chapters from PDF with outline" do
+        splitter.instance_variable_set(:@pdf_path, pdf_with_outline)
+        chapters = splitter.send(:extract_chapters)
+
+        expect(chapters).to be_an(Array)
+        expect(chapters).not_to be_empty
+        expect(chapters.first).to include(:title, :page, :level)
+      end
+
+      it "returns nil for PDF without outline" do
+        splitter.instance_variable_set(:@pdf_path, pdf_without_outline)
+        chapters = splitter.send(:extract_chapters)
+
+        expect(chapters).to be_nil
+      end
+
+      it "handles malformed PDF gracefully" do
+        allow(PDF::Reader).to receive(:new).and_raise(PDF::Reader::MalformedPDFError, "Test error")
+
+        expect do
+          splitter.send(:extract_chapters)
+        end.to raise_error(SystemExit)
+      end
+
+      it "handles general errors gracefully" do
+        allow(PDF::Reader).to receive(:new).and_raise(StandardError, "Test error")
+
+        expect do
+          splitter.send(:extract_chapters)
+        end.to raise_error(SystemExit)
+      end
+    end
+
+    describe "#extract_pages" do
+      it "creates a new PDF with specified pages" do
+        doc = instance_double(HexaPDF::Document)
+        allow(splitter).to receive_messages(
+          build_output_path: "/tmp/test.pdf",
+          create_pdf_with_pages: doc,
+          save_pdf_document: nil
+        )
+
+        splitter.send(:extract_pages, doc, 1, 5, "test.pdf")
+
+        expect(splitter).to have_received(:build_output_path).with("test.pdf")
+        expect(splitter).to have_received(:create_pdf_with_pages).with(doc, 1, 5)
+        expect(splitter).to have_received(:save_pdf_document).with(doc, "/tmp/test.pdf", "test.pdf")
+      end
+    end
+
     describe "#output_dir" do
       it "returns directory of PDF file" do
         splitter.instance_variable_set(:@pdf_path, "/path/to/file.pdf")
@@ -1074,6 +1180,203 @@ RSpec.describe PDFChapterSplitter do
         all_chapters = [{ title: "Other", page: 5 }]
         result = splitter.send(:get_chapter_index, chapter, all_chapters)
         expect(result).to be_nil
+      end
+    end
+
+    describe "#sort_chapters_hierarchically" do
+      it "sorts by page number first" do
+        chapters = [
+          { title: "Chapter 2", page: 10, level: 0 },
+          { title: "Chapter 1", page: 5, level: 0 }
+        ]
+        result = splitter.send(:sort_chapters_hierarchically, chapters)
+        expect(result[0][:title]).to eq("Chapter 1")
+        expect(result[1][:title]).to eq("Chapter 2")
+      end
+
+      it "prioritizes parent chapters when on same page" do
+        chapters = [
+          { title: "Section 1.1", page: 5, level: 1 },
+          { title: "Chapter 1", page: 5, level: 0 }
+        ]
+        result = splitter.send(:sort_chapters_hierarchically, chapters)
+        expect(result[0][:title]).to eq("Chapter 1")
+        expect(result[1][:title]).to eq("Section 1.1")
+      end
+
+      it "handles nil pages" do
+        chapters = [
+          { title: "Chapter 2", page: nil, level: 0 },
+          { title: "Chapter 1", page: 5, level: 0 }
+        ]
+        result = splitter.send(:sort_chapters_hierarchically, chapters)
+        expect(result[0][:title]).to eq("Chapter 2") # nil treated as 0
+        expect(result[1][:title]).to eq("Chapter 1")
+      end
+    end
+
+    describe "#collect_intermediate_chapters" do
+      it "returns empty array for depth 1" do
+        chapters = [
+          { title: "Chapter 1", level: 0, page: 1 },
+          { title: "Chapter 2", level: 0, page: 10 }
+        ]
+        result = splitter.send(:collect_intermediate_chapters, chapters, 1)
+        expect(result).to be_empty
+      end
+
+      it "collects intermediate chapters with children" do
+        chapters = [
+          { title: "Chapter 1", level: 0, page: 1 },
+          { title: "Section 1.1", level: 1, page: 2, parent_indices: [0] },
+          { title: "Subsection 1.1.1", level: 2, page: 3, parent_indices: [0, 1] }
+        ]
+        chapters.each_with_index { |ch, i| ch[:original_index] = i }
+
+        # Build parent-child relationships
+        splitter.send(:build_parent_child_relationships, chapters)
+
+        result = splitter.send(:collect_intermediate_chapters, chapters, 3)
+
+        expect(result.size).to eq(2) # Chapter 1 and Section 1.1
+        expect(result[0][:title]).to eq("Chapter 1")
+        expect(result[1][:title]).to eq("Section 1.1")
+      end
+
+      it "excludes chapters without children" do
+        chapters = [
+          { title: "Chapter 1", level: 0, page: 1 },
+          { title: "Section 1.1", level: 1, page: 2 },
+          { title: "Chapter 2", level: 0, page: 10 }
+        ]
+        chapters.each_with_index { |ch, i| ch[:original_index] = i }
+
+        splitter.send(:build_parent_child_relationships, chapters)
+        result = splitter.send(:collect_intermediate_chapters, chapters, 2)
+
+        # Only Chapter 1 should be included (has children)
+        expect(result.size).to eq(1)
+        expect(result[0][:title]).to eq("Chapter 1")
+      end
+    end
+
+    describe "#any_children?" do
+      it "returns true when chapter has children" do
+        chapters = [
+          { title: "Chapter 1", level: 0, parent_indices: [] },
+          { title: "Section 1.1", level: 1, parent_indices: [0] }
+        ]
+
+        result = splitter.send(:any_children?, chapters, 0)
+        expect(result).to be true
+      end
+
+      it "returns false when chapter has no children" do
+        chapters = [
+          { title: "Chapter 1", level: 0, parent_indices: [] },
+          { title: "Chapter 2", level: 0, parent_indices: [] }
+        ]
+
+        result = splitter.send(:any_children?, chapters, 0)
+        expect(result).to be false
+      end
+
+      it "handles nil parent_indices" do
+        chapters = [
+          { title: "Chapter 1", level: 0 },
+          { title: "Section 1.1", level: 1, parent_indices: nil }
+        ]
+
+        result = splitter.send(:any_children?, chapters, 0)
+        expect(result).to be false
+      end
+    end
+
+    describe "#build_parent_child_relationships" do
+      it "adds original index to chapters" do
+        chapters = [
+          { title: "Chapter 1", level: 0 },
+          { title: "Section 1.1", level: 1 },
+          { title: "Chapter 2", level: 0 }
+        ]
+
+        splitter.send(:build_parent_child_relationships, chapters)
+
+        expect(chapters[0][:original_index]).to eq(0)
+        expect(chapters[1][:original_index]).to eq(1)
+        expect(chapters[2][:original_index]).to eq(2)
+      end
+
+      it "adds correct parent indices" do
+        chapters = [
+          { title: "Chapter 1", level: 0 },
+          { title: "Section 1.1", level: 1 },
+          { title: "Chapter 2", level: 0 }
+        ]
+
+        splitter.send(:build_parent_child_relationships, chapters)
+
+        expect(chapters[0][:parent_indices]).to eq([])
+        expect(chapters[1][:parent_indices]).to eq([0])
+        expect(chapters[2][:parent_indices]).to eq([])
+      end
+    end
+
+    describe "#validate_depth_option" do
+      it "allows valid depth" do
+        expect { splitter.send(:validate_depth_option, 1) }.not_to raise_error
+        expect { splitter.send(:validate_depth_option, 5) }.not_to raise_error
+      end
+
+      it "exits for invalid depth" do
+        allow(splitter).to receive(:warn)
+        allow(splitter).to receive(:exit)
+
+        splitter.send(:validate_depth_option, 0)
+
+        expect(splitter).to have_received(:warn).with("Error: Depth must be at least 1")
+        expect(splitter).to have_received(:exit).with(1)
+      end
+    end
+
+    describe "#prepare_output_directory" do
+      let(:temp_dir) { Dir.mktmpdir }
+
+      before do
+        allow(splitter).to receive(:output_dir).and_return(temp_dir)
+        allow(splitter).to receive(:log)
+      end
+
+      after do
+        FileUtils.rm_rf(temp_dir)
+      end
+
+      it "creates chapters directory when it doesn't exist" do
+        splitter.send(:prepare_output_directory)
+
+        expect(Dir.exist?(File.join(temp_dir, "chapters"))).to be true
+      end
+
+      it "removes existing directory with force option" do
+        chapters_dir = File.join(temp_dir, "chapters")
+        FileUtils.mkdir_p(chapters_dir)
+        File.write(File.join(chapters_dir, "test.txt"), "test")
+
+        splitter.instance_variable_set(:@options, { force: true })
+        splitter.send(:prepare_output_directory)
+
+        expect(File.exist?(File.join(chapters_dir, "test.txt"))).to be false
+      end
+
+      it "exits when directory exists without force" do
+        chapters_dir = File.join(temp_dir, "chapters")
+        FileUtils.mkdir_p(chapters_dir)
+
+        splitter.instance_variable_set(:@options, { force: false })
+
+        expect do
+          splitter.send(:prepare_output_directory)
+        end.to raise_error(SystemExit)
       end
     end
   end
