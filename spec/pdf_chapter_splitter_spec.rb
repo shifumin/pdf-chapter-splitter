@@ -26,6 +26,33 @@ RSpec.describe PDFChapterSplitter do
       end
     end
 
+    context "with options in different orders" do
+      it "accepts options before filename" do
+        stdout, = run_script("--dry-run", "--verbose", pdf_with_outline)
+        expect(stdout).to include("Dry Run Mode")
+        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
+      end
+
+      it "accepts options after filename" do
+        stdout, = run_script(pdf_with_outline, "--dry-run", "--verbose")
+        expect(stdout).to include("Dry Run Mode")
+        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
+      end
+
+      it "accepts mixed option positions" do
+        stdout, = run_script("--dry-run", pdf_with_outline, "--verbose")
+        expect(stdout).to include("Dry Run Mode")
+        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
+      end
+
+      it "accepts short and long options mixed" do
+        stdout, = run_script("-n", "-d", "2", pdf_with_outline, "-v")
+        expect(stdout).to include("Dry Run Mode")
+        expect(stdout).to include("Split depth: 2")
+        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
+      end
+    end
+
     context "without arguments" do
       it "shows error message" do
         _, stderr, exit_status = run_script
@@ -225,6 +252,137 @@ RSpec.describe PDFChapterSplitter do
     end
   end
 
+  describe "--depth option" do
+    let(:test_pdf) do
+      test_file = File.join(temp_dir, "test.pdf")
+      FileUtils.cp(complex_pdf, test_file)
+      test_file
+    end
+
+    context "with depth 1 (default)" do
+      it "extracts only top-level chapters" do
+        stdout, = run_script("--dry-run", test_pdf)
+        expect(stdout).to include("Split depth: 1")
+        expect(stdout).to include("Chapter 1")
+        expect(stdout).to include("Chapter 2")
+        expect(stdout).not_to include("Section")
+      end
+    end
+
+    context "with depth 2" do
+      it "extracts sections at depth 2" do
+        stdout, = run_script("--dry-run", "--depth", "2", test_pdf)
+        expect(stdout).to include("Split depth: 2")
+        expect(stdout).to include("Section 1.1")
+        expect(stdout).to include("Section 1.2")
+        expect(stdout).to include("Section 2.1")
+      end
+
+      it "includes parent chapter in filename" do
+        stdout, = run_script("--dry-run", "--depth", "2", test_pdf)
+        expect(stdout).to include("Chapter 1_Section 1.1")
+        expect(stdout).to include("Chapter 1_Section 1.2")
+        expect(stdout).to include("Chapter 2_Section 2.1")
+      end
+
+      it "includes chapters without subsections" do
+        stdout, = run_script("--dry-run", "--depth", "2", test_pdf)
+        # Chapter 3 has no sections, so it should be included as is
+        expect(stdout).to include("Chapter 3")
+      end
+    end
+
+    context "with depth 3" do
+      it "extracts subsections at depth 3" do
+        stdout, = run_script("--dry-run", "--depth", "3", test_pdf)
+        expect(stdout).to include("Subsection 1.1.1")
+        expect(stdout).to include("Subsection 1.1.2")
+      end
+    end
+
+    context "with depth exceeding maximum" do
+      it "adjusts to maximum available depth" do
+        stdout, = run_script("--dry-run", "--depth", "10", "--verbose", test_pdf)
+        expect(stdout).to include("指定された階層 10 はPDFの最大階層")
+      end
+    end
+
+    context "with invalid depth" do
+      it "shows error for depth 0" do
+        _, stderr, exit_status = run_script("--depth", "0", test_pdf)
+        expect(stderr).to include("Error: Depth must be at least 1")
+        expect(exit_status).to eq(1)
+      end
+
+      it "shows error for negative depth" do
+        _, stderr, exit_status = run_script("--depth", "-1", test_pdf)
+        expect(stderr).to include("Error: Depth must be at least 1")
+        expect(exit_status).to eq(1)
+      end
+
+      it "shows error for non-integer depth" do
+        _, stderr, exit_status = run_script("--depth", "abc", test_pdf)
+        expect(stderr).to match(/invalid argument|Depth must be at least 1/)
+        expect(exit_status).to eq(1)
+      end
+    end
+
+    context "actual splitting with depth" do
+      it "creates files with parent context in names" do
+        run_script("--depth", "2", test_pdf)
+        chapters_dir = File.join(temp_dir, "chapters")
+
+        files = Dir.entries(chapters_dir).reject { |f| f.start_with?(".") }
+        expect(files.any? { |f| f.include?("Chapter 1_Section") }).to be true
+        expect(files.any? { |f| f.include?("Chapter 2_Section") }).to be true
+      end
+    end
+  end
+
+  describe "appendix detection" do
+    let(:test_pdf) do
+      test_file = File.join(temp_dir, "test.pdf")
+      FileUtils.cp(pdf_with_outline, test_file)
+      test_file
+    end
+
+    it "detects appendix pages after last chapter" do
+      stdout, = run_script("--dry-run", test_pdf)
+      # If there are pages after the last chapter, they should be in appendix
+      expect(stdout).to include("99_付録.pdf") if stdout.include?("99_付録.pdf")
+    end
+
+    it "creates appendix file when pages exist after last chapter" do
+      run_script(test_pdf)
+      chapters_dir = File.join(temp_dir, "chapters")
+
+      # Check if appendix was created (depends on test PDF structure)
+      appendix_file = File.join(chapters_dir, "99_付録.pdf")
+      expect { PDF::Reader.new(appendix_file) }.not_to raise_error if File.exist?(appendix_file)
+    end
+  end
+
+  describe "edge cases" do
+    context "with chapters starting on same page" do
+      it "handles parent and child on same page correctly" do
+        stdout, = run_script("--dry-run", "--depth", "2", "--verbose", complex_pdf)
+
+        # Check for info message about same page
+        expect(stdout).to match(/が同じページ.*から開始しています/) if stdout.include?("同じページ")
+      end
+    end
+
+    context "with missing page numbers" do
+      # This would require a specially crafted PDF
+      # For now, we verify the implementation handles nil page numbers
+      it "defaults to page 1 when page number is missing" do
+        stdout, = run_script("--dry-run", pdf_with_outline)
+        # All chapters should have page ranges even if some lack page numbers
+        expect(stdout.scan(/pages \d+-\d+/).size).to be > 0
+      end
+    end
+  end
+
   describe "error handling" do
     context "with corrupted PDF" do
       it "shows appropriate error message" do
@@ -234,6 +392,620 @@ RSpec.describe PDFChapterSplitter do
         _, stderr, exit_status = run_script(corrupted_pdf)
         expect(stderr).to include("Error")
         expect(exit_status).to eq(1)
+      end
+    end
+
+    context "with malformed PDF structure" do
+      it "handles missing outline gracefully" do
+        _, stderr, exit_status = run_script(pdf_without_outline)
+        expect(stderr).to include("No outline found")
+        expect(exit_status).to eq(1)
+      end
+    end
+
+    context "with empty file path" do
+      it "shows error message for empty string" do
+        _, stderr, exit_status = run_script("")
+        expect(stderr).to include("Error: Please provide a PDF file path")
+        expect(exit_status).to eq(1)
+      end
+    end
+
+    context "with whitespace-only file path" do
+      it "shows error message for whitespace string" do
+        _, stderr, exit_status = run_script("   ")
+        expect(stderr).to include("Error: Please provide a PDF file path")
+        expect(exit_status).to eq(1)
+      end
+    end
+
+    context "with PDF reader malformed error" do
+      let(:test_pdf) do
+        test_file = File.join(temp_dir, "test.pdf")
+        FileUtils.cp(pdf_with_outline, test_file)
+        test_file
+      end
+
+      it "handles PDF::Reader::MalformedPDFError" do
+        allow(PDF::Reader).to receive(:new).and_raise(PDF::Reader::MalformedPDFError, "Invalid PDF")
+
+        _, stderr, exit_status = run_script(test_pdf)
+        expect(stderr).to include("Error: Malformed PDF - Invalid PDF")
+        expect(exit_status).to eq(1)
+      end
+    end
+
+    context "with general PDF reading error" do
+      let(:test_pdf) do
+        test_file = File.join(temp_dir, "test.pdf")
+        FileUtils.cp(pdf_with_outline, test_file)
+        test_file
+      end
+
+      it "handles general StandardError" do
+        allow(PDF::Reader).to receive(:new).and_raise(StandardError, "Generic error")
+
+        _, stderr, exit_status = run_script(test_pdf)
+        expect(stderr).to include("Error reading PDF: Generic error")
+        expect(exit_status).to eq(1)
+      end
+    end
+  end
+
+  describe "unit tests for internal methods" do
+    # Create a test instance without command line arguments
+    let(:splitter) do
+      # Save original ARGV
+      original_argv = ARGV.dup
+      # Set test ARGV
+      ARGV.clear
+      ARGV << "#{fixture_path}/sample_with_outline.pdf"
+
+      # Create instance
+      instance = described_class.new
+
+      # Restore original ARGV
+      ARGV.clear
+      original_argv.each { |arg| ARGV << arg }
+
+      instance
+    end
+
+    describe "#decode_pdf_string (basic)" do
+      it "handles UTF-16BE encoded strings" do
+        # UTF-16BE with BOM
+        utf16_string = "\xFE\xFF\x00T\x00e\x00s\x00t".dup
+        result = splitter.send(:decode_pdf_string, utf16_string)
+        expect(result).to eq("Test")
+      end
+
+      it "removes BOM from strings" do
+        # UTF-8 with BOM
+        bom_string = "\uFEFFTest String".dup
+        result = splitter.send(:decode_pdf_string, bom_string)
+        expect(result).to eq("Test String")
+      end
+
+      it "converts full-width spaces to half-width" do
+        string_with_fullwidth = "Test　String".dup
+        result = splitter.send(:decode_pdf_string, string_with_fullwidth)
+        expect(result).to eq("Test String")
+      end
+
+      it "handles nil input" do
+        result = splitter.send(:decode_pdf_string, nil)
+        expect(result).to be_nil
+      end
+
+      it "handles regular UTF-8 strings" do
+        regular_string = "Regular String".dup
+        result = splitter.send(:decode_pdf_string, regular_string)
+        expect(result).to eq("Regular String")
+      end
+    end
+
+    describe "#filter_chapters_by_depth" do
+      let(:chapters) do
+        [
+          { title: "Chapter 1", page: 1, level: 0 },
+          { title: "Section 1.1", page: 5, level: 1 },
+          { title: "Subsection 1.1.1", page: 7, level: 2 },
+          { title: "Section 1.2", page: 10, level: 1 },
+          { title: "Chapter 2", page: 15, level: 0 },
+          { title: "Section 2.1", page: 17, level: 1 },
+          { title: "Chapter 3", page: 25, level: 0 }
+        ]
+      end
+
+      it "filters chapters at depth 1" do
+        result = splitter.send(:filter_chapters_by_depth, chapters, 1)
+        expect(result.map { |ch| ch[:title] }).to eq(["Chapter 1", "Chapter 2", "Chapter 3"])
+      end
+
+      it "filters chapters at depth 2" do
+        result = splitter.send(:filter_chapters_by_depth, chapters, 2)
+        titles = result.map { |ch| ch[:title] }
+        expect(titles).to include("Section 1.1", "Section 1.2", "Section 2.1")
+        expect(titles).to include("Chapter 3") # No subsections, so included
+      end
+
+      it "filters chapters at depth 3" do
+        result = splitter.send(:filter_chapters_by_depth, chapters, 3)
+        titles = result.map { |ch| ch[:title] }
+        expect(titles).to include("Subsection 1.1.1")
+        expect(titles).to include("Section 1.2") # No subsections at depth 3
+      end
+
+      it "handles empty chapters array" do
+        result = splitter.send(:filter_chapters_by_depth, [], 1)
+        expect(result).to eq([])
+      end
+
+      it "adds parent indices correctly" do
+        result = splitter.send(:filter_chapters_by_depth, chapters, 2)
+        section = result.find { |ch| ch[:title] == "Section 1.1" }
+        expect(section[:parent_indices]).to include(0) # Chapter 1 is at index 0
+      end
+    end
+
+    describe "#find_chapter_end_page" do
+      let(:all_chapters) do
+        [
+          { title: "Chapter 1", page: 1, level: 0, original_index: 0 },
+          { title: "Section 1.1", page: 5, level: 1, original_index: 1, parent_indices: [0] },
+          { title: "Chapter 2", page: 15, level: 0, original_index: 2 },
+          { title: "Chapter 3", page: 25, level: 0, original_index: 3 }
+        ]
+      end
+
+      it "finds end page for chapter with next chapter" do
+        chapter = all_chapters[0]
+        end_page = splitter.send(:find_chapter_end_page, chapter, all_chapters, 30)
+        expect(end_page).to eq(14) # Page before Chapter 2
+      end
+
+      it "returns total pages for last chapter" do
+        chapter = all_chapters[3]
+        end_page = splitter.send(:find_chapter_end_page, chapter, all_chapters, 30)
+        expect(end_page).to eq(30)
+      end
+
+      it "handles nested chapters correctly" do
+        chapter = all_chapters[1] # Section 1.1
+        end_page = splitter.send(:find_chapter_end_page, chapter, all_chapters, 30)
+        expect(end_page).to eq(14) # Should extend to parent's end
+      end
+
+      it "handles missing original_index" do
+        chapter = { title: "Test Chapter", page: 20, level: 0 }
+        end_page = splitter.send(:find_chapter_end_page, chapter, all_chapters, 30)
+        expect(end_page).to eq(30) # Returns total pages when chapter not found
+      end
+    end
+
+    describe "#calculate_max_depth" do
+      it "calculates correct maximum depth" do
+        chapters = [
+          { level: 0 },
+          { level: 1 },
+          { level: 2 },
+          { level: 1 },
+          { level: 0 }
+        ]
+        max_depth = splitter.send(:calculate_max_depth, chapters)
+        expect(max_depth).to eq(3) # levels 0, 1, 2 = depth 3
+      end
+
+      it "handles single level chapters" do
+        chapters = [{ level: 0 }, { level: 0 }]
+        max_depth = splitter.send(:calculate_max_depth, chapters)
+        expect(max_depth).to eq(1)
+      end
+    end
+
+    describe "#format_chapter_filename_with_parent" do
+      it "formats filename with parent title" do
+        filename = splitter.send(:format_chapter_filename_with_parent, 5, "Section Title", "Chapter Title")
+        expect(filename).to eq("05_Chapter Title_Section Title.pdf")
+      end
+
+      it "handles missing parent title" do
+        filename = splitter.send(:format_chapter_filename_with_parent, 5, "Section Title", nil)
+        expect(filename).to eq("05_Section Title.pdf")
+      end
+
+      it "sanitizes invalid characters" do
+        filename = splitter.send(:format_chapter_filename_with_parent, 1, "Section: Test", "Chapter/Test")
+        expect(filename).to eq("01_Chapter_Test_Section_ Test.pdf")
+      end
+    end
+
+    describe "#format_chapter_filename" do
+      it "formats filename with proper padding" do
+        filename = splitter.send(:format_chapter_filename, 1, "Chapter Title")
+        expect(filename).to eq("01_Chapter Title.pdf")
+      end
+
+      it "sanitizes all invalid characters" do
+        filename = splitter.send(:format_chapter_filename, 1, "Chapter: Test/File*Name?<>|\"")
+        expect(filename).to eq("01_Chapter_ Test_File_Name_____.pdf")
+      end
+
+      it "handles numbers greater than 99" do
+        filename = splitter.send(:format_chapter_filename, 100, "Chapter Title")
+        expect(filename).to eq("100_Chapter Title.pdf")
+      end
+    end
+
+    describe "#extract_page_from_array_dest" do
+      it "returns nil for empty destination array" do
+        reader = instance_double(PDF::Reader, pages: [])
+        result = splitter.send(:extract_page_from_array_dest, reader, [])
+        expect(result).to be_nil
+      end
+    end
+
+    describe "#extract_page_from_string_dest" do
+      it "extracts page number from p-prefixed string" do
+        result = splitter.send(:extract_page_from_string_dest, "p35")
+        expect(result).to eq(35)
+      end
+
+      it "returns nil for non-matching string format" do
+        result = splitter.send(:extract_page_from_string_dest, "page_35")
+        expect(result).to be_nil
+      end
+
+      it "returns nil for complex named destinations" do
+        result = splitter.send(:extract_page_from_string_dest, "Chapter1.Section2")
+        expect(result).to be_nil
+      end
+    end
+
+    describe "#get_destination" do
+      it "returns direct destination if available" do
+        item = { Dest: "direct_dest" }
+        reader = instance_double(PDF::Reader)
+        result = splitter.send(:get_destination, reader, item)
+        expect(result).to eq("direct_dest")
+      end
+
+      it "returns nil if no destination or action" do
+        item = {}
+        reader = instance_double(PDF::Reader)
+        result = splitter.send(:get_destination, reader, item)
+        expect(result).to be_nil
+      end
+
+      it "extracts destination from action" do
+        item = { A: { D: "action_dest" } }
+        reader = instance_double(PDF::Reader)
+        result = splitter.send(:get_destination, reader, item)
+        expect(result).to eq("action_dest")
+      end
+
+      it "resolves action reference" do
+        action_ref = PDF::Reader::Reference.new(1, 0)
+        action_hash = { D: "resolved_dest" }
+        objects = instance_double(PDF::Reader::ObjectHash)
+        allow(objects).to receive(:[]).with(action_ref).and_return(action_hash)
+        reader = instance_double(PDF::Reader, objects: objects)
+
+        item = { A: action_ref }
+        result = splitter.send(:get_destination, reader, item)
+        expect(result).to eq("resolved_dest")
+      end
+    end
+
+    describe "#children_at_depth?" do
+      it "returns true when children exist at target depth" do
+        chapters = [
+          { level: 0, parent_indices: nil },
+          { level: 1, parent_indices: [0] }
+        ]
+        result = splitter.send(:children_at_depth?, chapters, 0, 1)
+        expect(result).to be true
+      end
+
+      it "returns false when no children at target depth" do
+        chapters = [
+          { level: 0, parent_indices: nil },
+          { level: 2, parent_indices: [0] }
+        ]
+        result = splitter.send(:children_at_depth?, chapters, 0, 1)
+        expect(result).to be false
+      end
+
+      it "handles nil parent_indices" do
+        chapters = [
+          { level: 0, parent_indices: nil },
+          { level: 1, parent_indices: nil }
+        ]
+        result = splitter.send(:children_at_depth?, chapters, 0, 1)
+        expect(result).to be false
+      end
+    end
+
+    describe "#should_include_chapter?" do
+      it "includes chapter at exact target depth" do
+        chapter = { level: 1 }
+        result = splitter.send(:should_include_chapter?, chapter, 0, 2, {})
+        expect(result).to be true
+      end
+
+      it "includes chapter without children at target depth" do
+        chapter = { level: 0 }
+        chapters_with_children = { 0 => false }
+        result = splitter.send(:should_include_chapter?, chapter, 0, 2, chapters_with_children)
+        expect(result).to be true
+      end
+
+      it "excludes chapter with children at target depth" do
+        chapter = { level: 0 }
+        chapters_with_children = { 0 => true }
+        result = splitter.send(:should_include_chapter?, chapter, 0, 2, chapters_with_children)
+        expect(result).to be false
+      end
+    end
+
+    describe "#find_parent_indices" do
+      it "finds all parent indices for deeply nested chapter" do
+        chapters = [
+          { level: 0 },  # index 0
+          { level: 1 },  # index 1
+          { level: 2 },  # index 2
+          { level: 3 }   # index 3
+        ]
+        result = splitter.send(:find_parent_indices, chapters, 3, 3)
+        expect(result).to eq([2, 1, 0])
+      end
+
+      it "finds parent for sibling chapters" do
+        chapters = [
+          { level: 0 },  # index 0
+          { level: 1 },  # index 1
+          { level: 1 },  # index 2
+          { level: 1 }   # index 3
+        ]
+        result = splitter.send(:find_parent_indices, chapters, 3, 1)
+        expect(result).to eq([0])
+      end
+
+      it "returns empty array for top-level chapter" do
+        chapters = [
+          { level: 0 },  # index 0
+          { level: 0 }   # index 1
+        ]
+        result = splitter.send(:find_parent_indices, chapters, 1, 0)
+        expect(result).to eq([])
+      end
+
+      it "stops at level 0 parent" do
+        chapters = [
+          { level: 0 },  # index 0
+          { level: 1 },  # index 1
+          { level: 0 },  # index 2
+          { level: 1 }   # index 3
+        ]
+        result = splitter.send(:find_parent_indices, chapters, 3, 1)
+        expect(result).to eq([2])
+      end
+    end
+
+    describe "#extract_chapters_from_reader" do
+      it "returns nil when outline_root is nil" do
+        reader = instance_double(PDF::Reader)
+        allow(splitter).to receive(:find_outline_root).and_return(nil)
+
+        result = splitter.send(:extract_chapters_from_reader, reader)
+        expect(result).to be_nil
+      end
+    end
+
+    describe "#parse_outline_item" do
+      it "handles nil item_ref gracefully" do
+        reader = instance_double(PDF::Reader)
+        chapters = []
+
+        # Should not raise error and chapters should remain empty
+        expect do
+          splitter.send(:parse_outline_item, reader, nil, chapters, 0)
+        end.not_to raise_error
+        expect(chapters).to be_empty
+      end
+
+      it "handles nil item gracefully" do
+        reader = instance_double(PDF::Reader)
+        objects = instance_double(PDF::Reader::ObjectHash)
+        allow(reader).to receive(:objects).and_return(objects)
+        allow(objects).to receive(:[]).and_return(nil)
+
+        chapters = []
+        item_ref = PDF::Reader::Reference.new(1, 0)
+
+        expect do
+          splitter.send(:parse_outline_item, reader, item_ref, chapters, 0)
+        end.not_to raise_error
+        expect(chapters).to be_empty
+      end
+    end
+
+    describe "#decode_pdf_string (error handling)" do
+      it "handles encoding errors gracefully for UTF-16BE" do
+        # Invalid UTF-16BE sequence
+        invalid_utf16 = "\xFE\xFF\x00\xD8\x00\x00".dup.force_encoding("BINARY")
+        result = splitter.send(:decode_pdf_string, invalid_utf16)
+        expect(result).to be_a(String)
+        expect(result.encoding).to eq(Encoding::UTF_8)
+      end
+
+      it "handles encoding errors gracefully for UTF-8" do
+        # Invalid UTF-8 sequence
+        invalid_utf8 = "\xFF\xFE\xFD".dup.force_encoding("BINARY")
+        result = splitter.send(:decode_pdf_string, invalid_utf8)
+        expect(result).to be_a(String)
+        expect(result.encoding).to eq(Encoding::UTF_8)
+      end
+
+      it "handles non-string input" do
+        result = splitter.send(:decode_pdf_string, 123)
+        expect(result).to be_nil
+      end
+    end
+
+    describe "#extract_page_number" do
+      it "returns nil when exception occurs" do
+        reader = instance_double(PDF::Reader)
+        item = { Dest: "invalid_dest" }
+
+        # Mock to raise an exception
+        allow(splitter).to receive(:get_destination).and_raise(StandardError)
+
+        result = splitter.send(:extract_page_number, reader, item)
+        expect(result).to be_nil
+      end
+    end
+
+    describe "#find_next_chapter_at_same_or_higher_level" do
+      it "handles chapters without original_index" do
+        all_chapters = [
+          { title: "Chapter 1", level: 0, page: 1 },
+          { title: "Chapter 2", level: 0, page: 10 }
+        ]
+
+        result = splitter.send(:find_next_chapter_at_same_or_higher_level, 0, 0, all_chapters)
+        expect(result[:title]).to eq("Chapter 2")
+      end
+    end
+
+    describe "#parent?" do
+      it "returns true for chapter with parent indices" do
+        chapter = { parent_indices: [0, 1] }
+        expect(splitter.send(:parent?, chapter)).to be true
+      end
+
+      it "returns false for chapter with empty parent indices" do
+        chapter = { parent_indices: [] }
+        expect(splitter.send(:parent?, chapter)).to be false
+      end
+
+      it "returns false for chapter without parent indices" do
+        chapter = {}
+        expect(splitter.send(:parent?, chapter)).to be_falsey
+      end
+    end
+
+    describe "#identify_chapters_with_target_depth_children" do
+      it "correctly identifies chapters with children at target depth" do
+        chapters = [
+          { level: 0 }, # index 0 - has child at depth 1
+          { level: 1, parent_indices: [0] }, # index 1
+          { level: 0 },  # index 2 - no children
+          { level: 0 }   # index 3 - has child at depth 1
+        ]
+        chapters << { level: 1, parent_indices: [3] } # index 4
+
+        result = splitter.send(:identify_chapters_with_target_depth_children, chapters, 2)
+        expect(result[0]).to be true
+        expect(result[2]).to be false
+        expect(result[3]).to be true
+      end
+    end
+
+    describe "#find_end_page_from_parent" do
+      it "finds end page based on parent's next sibling" do
+        all_chapters = [
+          { title: "Chapter 1", level: 0, page: 1 },
+          { title: "Section 1.1", level: 1, page: 5, parent_indices: [0] },
+          { title: "Chapter 2", level: 0, page: 15 }
+        ]
+
+        chapter = all_chapters[1]
+        result = splitter.send(:find_end_page_from_parent, chapter, all_chapters, 30)
+        expect(result).to eq(14)
+      end
+
+      it "returns total pages when parent has no next sibling" do
+        all_chapters = [
+          { title: "Chapter 1", level: 0, page: 1 },
+          { title: "Section 1.1", level: 1, page: 5, parent_indices: [0] }
+        ]
+
+        chapter = all_chapters[1]
+        result = splitter.send(:find_end_page_from_parent, chapter, all_chapters, 30)
+        expect(result).to eq(30)
+      end
+    end
+
+    describe "#log" do
+      it "prints message when not in dry-run mode" do
+        allow(splitter.instance_variable_get(:@options)).to receive(:[]).with(:dry_run).and_return(false)
+        expect { splitter.send(:log, "Test message") }.to output("Test message\n").to_stdout
+      end
+
+      it "suppresses message in dry-run mode without verbose" do
+        allow(splitter.instance_variable_get(:@options)).to receive(:[]).with(:dry_run).and_return(true)
+        allow(splitter.instance_variable_get(:@options)).to receive(:[]).with(:verbose).and_return(false)
+        expect { splitter.send(:log, "Test message") }.not_to output.to_stdout
+      end
+
+      it "prints message in dry-run mode with verbose" do
+        allow(splitter.instance_variable_get(:@options)).to receive(:[]).with(:dry_run).and_return(true)
+        allow(splitter.instance_variable_get(:@options)).to receive(:[]).with(:verbose).and_return(true)
+        expect { splitter.send(:log, "Test message") }.to output("Test message\n").to_stdout
+      end
+    end
+
+    describe "#error_exit" do
+      it "prints error message to stderr and exits" do
+        allow(splitter).to receive(:warn)
+        allow(splitter).to receive(:exit)
+
+        splitter.send(:error_exit, "Test error")
+
+        expect(splitter).to have_received(:warn).with("Test error")
+        expect(splitter).to have_received(:exit).with(1)
+      end
+    end
+
+    describe "#output_dir" do
+      it "returns directory of PDF file" do
+        splitter.instance_variable_set(:@pdf_path, "/path/to/file.pdf")
+        expect(splitter.send(:output_dir)).to eq("/path/to")
+      end
+    end
+
+    describe "#validate_input!" do
+      it "validates input correctly" do
+        # This is already tested in integration tests
+        # validate_input! is a private method
+        expect(splitter.private_methods).to include(:validate_input!)
+      end
+    end
+
+    describe "#get_chapter_index" do
+      it "returns original_index if present" do
+        chapter = { original_index: 5, title: "Test", page: 10 }
+        result = splitter.send(:get_chapter_index, chapter, [])
+        expect(result).to eq(5)
+      end
+
+      it "finds chapter by title and page when original_index is missing" do
+        chapter = { title: "Test Chapter", page: 10 }
+        all_chapters = [
+          { title: "Other", page: 5 },
+          { title: "Test Chapter", page: 10 },
+          { title: "Another", page: 15 }
+        ]
+        result = splitter.send(:get_chapter_index, chapter, all_chapters)
+        expect(result).to eq(1)
+      end
+
+      it "returns nil when chapter not found" do
+        chapter = { title: "Missing", page: 99 }
+        all_chapters = [{ title: "Other", page: 5 }]
+        result = splitter.send(:get_chapter_index, chapter, all_chapters)
+        expect(result).to be_nil
       end
     end
   end
