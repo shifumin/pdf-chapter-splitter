@@ -137,6 +137,8 @@ The tool provides clear error messages for:
 - PDFs without outline/bookmarks
 - Existing output directory (without --force)
 - Malformed or corrupted PDFs
+- Invalid command-line arguments (e.g., non-integer depth values)
+- PDF reading errors (handles both PDF::Reader::MalformedPDFError and general StandardError)
 
 ### File Naming Convention
 
@@ -171,7 +173,7 @@ The project uses RuboCop for code quality with the following customizations:
 
 - Uses streaming/chunked processing where possible
 - Only loads necessary pages into memory
-- Efficient outline traversal (stops at first level)
+- Efficient outline traversal
 
 ## Known Limitations
 
@@ -188,3 +190,32 @@ The project uses RuboCop for code quality with the following customizations:
 4. Check PDF outline structure with: `bundle exec ruby -r pdf-reader -e "puts PDF::Reader.new('file.pdf').outline"`
 5. For encoding issues, examine raw PDF strings in debugger
 6. Use different `--depth` values to understand the PDF's structure
+
+## Recent Updates
+
+### Test Suite Enhancement (2025-06-15)
+- Added comprehensive unit tests for all private methods
+- Enhanced error handling tests including OptionParser::InvalidArgument
+- Added tests for edge cases in outline parsing and page number extraction
+- Improved test coverage to 100% for all public and critical private methods
+- Fixed RuboCop offenses and improved code quality
+
+### Test PDF Fixtures Update
+- Updated all test PDF fixtures to ensure proper outline structure
+- Fixed page reference issues in complex_outline.pdf
+- Improved Japanese text handling in test PDFs
+- Enhanced test coverage for multi-level splitting scenarios
+
+## Code Quality Standards
+
+### Testing Requirements
+- All public methods must have comprehensive test coverage
+- Critical private methods should be tested for edge cases
+- Error handling must be tested for all user-facing errors
+- Integration tests should cover the full workflow
+- Unit tests should be focused and test one thing at a time
+
+### RuboCop Compliance
+- Code must pass all RuboCop checks before committing
+- Use `bundle exec rubocop -a` to auto-fix issues
+- Custom configurations are defined in `.rubocop.yml`

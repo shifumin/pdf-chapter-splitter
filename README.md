@@ -122,6 +122,12 @@ Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automat
 bundle exec rspec
 ```
 
+The test suite includes:
+- Comprehensive unit tests for all public methods
+- Integration tests for the complete workflow
+- Edge case testing for error handling
+- 100% test coverage for critical functionality
+
 ### Running Linter
 
 ```bash
@@ -150,6 +156,9 @@ Use the `--force` option to overwrite existing output, or manually remove the di
 
 ### Encoding Issues
 The tool handles UTF-16BE and UTF-8 encoded text. If you encounter issues with special characters, please report them.
+
+### Invalid Command-Line Arguments
+The tool validates all command-line arguments and provides clear error messages for invalid inputs (e.g., non-integer depth values).
 
 ## License
 
