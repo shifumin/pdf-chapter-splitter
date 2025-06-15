@@ -225,39 +225,71 @@ module TestPDFGenerator
     page_num = 1
 
     5.times do |i|
+      # Chapter 3 (index 2) has no sections
+      section_count = i == 2 ? 0 : 2
+
       chapter = doc.add({
-                          Title: "Chapter #{i + 1}: Topic #{i + 1}",
+                          Title: "Chapter #{i + 1}",
                           Parent: doc.catalog[:Outlines],
                           Dest: [doc.pages[page_num], :Fit],
-                          Count: 2
+                          Count: section_count
                         })
 
       page_num += 1
 
-      # Add sections
+      # Add sections (skip for Chapter 3)
       prev_section = nil
       first_section = nil
 
-      2.times do |j|
-        section = doc.add({
-                            Title: "Section #{i + 1}.#{j + 1}",
-                            Parent: chapter,
-                            Dest: [doc.pages[page_num], :Fit]
-                          })
+      if i != 2 # Skip sections for Chapter 3
+        2.times do |j|
+          section = doc.add({
+                              Title: "Section #{i + 1}.#{j + 1}",
+                              Parent: chapter,
+                              Dest: [doc.pages[page_num], :Fit],
+                              Count: i == 0 && j == 0 ? 2 : 0 # Add subsections only to Section 1.1
+                            })
 
-        if prev_section
-          section[:Prev] = prev_section
-          prev_section[:Next] = section
-        else
-          first_section = section
+          # Add subsections to Section 1.1
+          if i == 0 && j == 0
+            prev_subsection = nil
+            first_subsection = nil
+
+            2.times do |k|
+              subsection = doc.add({
+                                     Title: "Subsection #{i + 1}.#{j + 1}.#{k + 1}",
+                                     Parent: section,
+                                     Dest: [doc.pages[page_num], :Fit]
+                                   })
+
+              if prev_subsection
+                subsection[:Prev] = prev_subsection
+                prev_subsection[:Next] = subsection
+              else
+                first_subsection = subsection
+              end
+
+              prev_subsection = subsection
+            end
+
+            section[:First] = first_subsection
+            section[:Last] = prev_subsection
+          end
+
+          if prev_section
+            section[:Prev] = prev_section
+            prev_section[:Next] = section
+          else
+            first_section = section
+          end
+
+          prev_section = section
+          page_num += 1
         end
 
-        prev_section = section
-        page_num += 1
+        chapter[:First] = first_section
+        chapter[:Last] = prev_section
       end
-
-      chapter[:First] = first_section
-      chapter[:Last] = prev_section
 
       if prev_chapter
         chapter[:Prev] = prev_chapter
