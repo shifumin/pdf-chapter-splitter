@@ -171,30 +171,3 @@ The tool validates all command-line arguments and provides clear error messages 
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Recent Improvements (2025-06-15)
-
-### Features
-- **Default All Hierarchy Levels**: When using `-d` option with depth 2+, automatically creates PDFs for all parent levels
-- **Hierarchical Sorting**: Parent chapters now appear before child sections when they start on the same page
-
-### Bug Fixes
-- **Page Range Calculation**: Fixed critical bug where chapters on the same page could have reversed page ranges
-- **Depth Filtering**: Fixed to properly include all chapters without children at or below the target depth
-
-### Code Quality
-- **Single Responsibility Principle**: Refactored core methods for better maintainability
-- **Test Suite Optimization**: Streamlined tests from 134 to 114 by removing redundant private method tests
-- **100% Coverage**: Maintained full coverage for all public methods while improving test maintainability
-
-## Acknowledgments
-
-- Uses [pdf-reader](https://github.com/yob/pdf-reader) for PDF outline parsing
-- Uses [HexaPDF](https://hexapdf.gettalong.org/) for PDF manipulation
