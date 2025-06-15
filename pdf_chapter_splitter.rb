@@ -79,7 +79,12 @@ class PDFChapterSplitter
   def parse_options
     options = { verbose: false, dry_run: false, force: false, depth: 1 }
 
-    create_option_parser(options).parse!
+    begin
+      create_option_parser(options).parse!
+    rescue OptionParser::InvalidArgument => e
+      error_exit "Error: #{e.message}"
+    end
+
     validate_depth_option(options[:depth])
 
     options
@@ -122,7 +127,7 @@ class PDFChapterSplitter
   end
 
   def validate_input!
-    error_exit "Error: Please provide a PDF file path" if @pdf_path.nil? || @pdf_path.empty?
+    error_exit "Error: Please provide a PDF file path" if @pdf_path.nil? || @pdf_path.strip.empty?
 
     error_exit "Error: File not found: #{@pdf_path}" unless File.exist?(@pdf_path)
 
