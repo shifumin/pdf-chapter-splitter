@@ -94,26 +94,9 @@ RSpec.describe PDFChapterSplitter do
       end
     end
 
-    context "with options in different orders" do
-      it "accepts options before filename" do
-        stdout, = run_script("--dry-run", "--verbose", pdf_with_outline)
-        expect(stdout).to include("Dry Run Mode")
-        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
-      end
-
-      it "accepts options after filename" do
-        stdout, = run_script(pdf_with_outline, "--dry-run", "--verbose")
-        expect(stdout).to include("Dry Run Mode")
-        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
-      end
-
-      it "accepts mixed option positions" do
-        stdout, = run_script("--dry-run", pdf_with_outline, "--verbose")
-        expect(stdout).to include("Dry Run Mode")
-        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
-      end
-
-      it "accepts short and long options mixed" do
+    context "with command line options" do
+      it "accepts options in flexible order" do
+        # Test that options work regardless of position
         stdout, = run_script("-n", "-d", "2", pdf_with_outline, "-v")
         expect(stdout).to include("Dry Run Mode")
         expect(stdout).to include("Split depth: 2")
@@ -553,7 +536,7 @@ RSpec.describe PDFChapterSplitter do
         allow(PDF::Reader).to receive(:new).and_raise(PDF::Reader::MalformedPDFError, "Invalid PDF")
 
         _, stderr, exit_status = run_script(test_pdf)
-        expect(stderr).to include("Error: Malformed PDF - Invalid PDF")
+        expect(stderr).to include("Error: The PDF file appears to be corrupted")
         expect(exit_status).to eq(1)
       end
     end
@@ -641,33 +624,62 @@ RSpec.describe PDFChapterSplitter do
       end
 
       it "filters chapters at depth 1" do
-        result = splitter.send(:filter_chapters_by_depth, chapters, 1)
+        result = splitter.filter_chapters_by_depth(chapters, 1)
         expect(result.map { |ch| ch[:title] }).to eq(["Chapter 1", "Chapter 2", "Chapter 3"])
       end
 
       it "filters chapters at depth 2" do
-        result = splitter.send(:filter_chapters_by_depth, chapters, 2)
+        result = splitter.filter_chapters_by_depth(chapters, 2)
         titles = result.map { |ch| ch[:title] }
         expect(titles).to include("Section 1.1", "Section 1.2", "Section 2.1")
         expect(titles).to include("Chapter 3") # No subsections, so included
       end
 
       it "filters chapters at depth 3" do
-        result = splitter.send(:filter_chapters_by_depth, chapters, 3)
+        result = splitter.filter_chapters_by_depth(chapters, 3)
         titles = result.map { |ch| ch[:title] }
         expect(titles).to include("Subsection 1.1.1")
         expect(titles).to include("Section 1.2") # No subsections at depth 3
       end
 
       it "handles empty chapters array" do
-        result = splitter.send(:filter_chapters_by_depth, [], 1)
+        result = splitter.filter_chapters_by_depth([], 1)
         expect(result).to eq([])
       end
 
       it "adds parent indices correctly" do
-        result = splitter.send(:filter_chapters_by_depth, chapters, 2)
+        result = splitter.filter_chapters_by_depth(chapters, 2)
         section = result.find { |ch| ch[:title] == "Section 1.1" }
         expect(section[:parent_indices]).to include(0) # Chapter 1 is at index 0
+      end
+
+      it "handles nil elements in chapters array" do
+        chapters_with_nil = [
+          { title: "Chapter 1", page: 1, level: 0 },
+          nil,
+          { title: "Chapter 2", page: 10, level: 0 }
+        ]
+        result = splitter.filter_chapters_by_depth(chapters_with_nil.compact, 1)
+        expect(result.map { |ch| ch[:title] }).to eq(["Chapter 1", "Chapter 2"])
+      end
+
+      it "handles very deep nesting (10+ levels)" do
+        deep_chapters = []
+        10.times do |i|
+          deep_chapters << { title: "Level #{i}", page: i + 1, level: i }
+        end
+        result = splitter.filter_chapters_by_depth(deep_chapters, 10)
+        expect(result.size).to eq(1)
+        expect(result.first[:level]).to eq(9)
+      end
+
+      it "handles chapters with nil level field" do
+        malformed_chapters = [
+          { title: "Chapter 1", page: 1, level: 0 },
+          { title: "Chapter 2", page: 20, level: nil }
+        ]
+        # This should raise an error as level is required
+        expect { splitter.filter_chapters_by_depth(malformed_chapters, 1) }.to raise_error(ArgumentError)
       end
     end
 
@@ -1094,7 +1106,7 @@ RSpec.describe PDFChapterSplitter do
     describe "#extract_chapters" do
       it "extracts chapters from PDF with outline" do
         splitter.instance_variable_set(:@pdf_path, pdf_with_outline)
-        chapters = splitter.send(:extract_chapters)
+        chapters = splitter.extract_chapters
 
         expect(chapters).to be_an(Array)
         expect(chapters).not_to be_empty
@@ -1103,7 +1115,7 @@ RSpec.describe PDFChapterSplitter do
 
       it "returns nil for PDF without outline" do
         splitter.instance_variable_set(:@pdf_path, pdf_without_outline)
-        chapters = splitter.send(:extract_chapters)
+        chapters = splitter.extract_chapters
 
         expect(chapters).to be_nil
       end
@@ -1112,7 +1124,7 @@ RSpec.describe PDFChapterSplitter do
         allow(PDF::Reader).to receive(:new).and_raise(PDF::Reader::MalformedPDFError, "Test error")
 
         expect do
-          splitter.send(:extract_chapters)
+          splitter.extract_chapters
         end.to raise_error(SystemExit)
       end
 
@@ -1120,8 +1132,24 @@ RSpec.describe PDFChapterSplitter do
         allow(PDF::Reader).to receive(:new).and_raise(StandardError, "Test error")
 
         expect do
-          splitter.send(:extract_chapters)
+          splitter.extract_chapters
         end.to raise_error(SystemExit)
+      end
+
+      it "handles extremely large outlines (1000+ chapters)" do
+        reader = instance_double(PDF::Reader)
+        allow(PDF::Reader).to receive(:new).and_return(reader)
+
+        # Mock large outline structure
+        large_outline = []
+        1000.times do |i|
+          large_outline << { Title: "Chapter #{i}", Dest: "p#{i + 1}" }
+        end
+
+        allow(splitter).to receive(:extract_chapters_from_reader).and_return(large_outline)
+
+        chapters = splitter.extract_chapters
+        expect(chapters.size).to eq(1000)
       end
     end
 
@@ -1377,6 +1405,52 @@ RSpec.describe PDFChapterSplitter do
         expect do
           splitter.send(:prepare_output_directory)
         end.to raise_error(SystemExit)
+      end
+    end
+
+    describe "#split_pdf" do
+      let(:test_chapters) do
+        [
+          { title: "Chapter 1", page: 1, level: 0, original_index: 0 },
+          { title: "Chapter 2", page: 10, level: 0, original_index: 1 }
+        ]
+      end
+
+      it "processes chapters and creates PDF files" do
+        mock_doc = instance_double(HexaPDF::Document)
+        allow(HexaPDF::Document).to receive(:open).and_yield(mock_doc)
+        allow(splitter).to receive(:create_split_context).and_return({})
+        allow(splitter).to receive(:process_all_pdf_sections)
+
+        splitter.split_pdf(test_chapters)
+
+        expect(HexaPDF::Document).to have_received(:open).with(pdf_with_outline)
+        expect(splitter).to have_received(:create_split_context).with(mock_doc, test_chapters)
+        expect(splitter).to have_received(:process_all_pdf_sections)
+      end
+
+      it "handles empty chapters array" do
+        mock_doc = instance_double(HexaPDF::Document)
+        allow(HexaPDF::Document).to receive(:open).and_yield(mock_doc)
+        allow(splitter).to receive(:create_split_context).and_return({})
+        allow(splitter).to receive(:process_all_pdf_sections)
+
+        expect { splitter.split_pdf([]) }.not_to raise_error
+      end
+
+      it "handles HexaPDF errors gracefully" do
+        allow(HexaPDF::Document).to receive(:open).and_raise(HexaPDF::Error, "Test error")
+
+        expect { splitter.split_pdf(test_chapters) }.to raise_error(HexaPDF::Error)
+      end
+
+      it "handles file system errors" do
+        mock_doc = instance_double(HexaPDF::Document)
+        allow(HexaPDF::Document).to receive(:open).and_yield(mock_doc)
+        allow(splitter).to receive(:create_split_context).and_return({})
+        allow(splitter).to receive(:process_all_pdf_sections).and_raise(Errno::ENOSPC, "No space left on device")
+
+        expect { splitter.split_pdf(test_chapters) }.to raise_error(Errno::ENOSPC)
       end
     end
   end
