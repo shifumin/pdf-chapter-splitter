@@ -28,6 +28,8 @@ Metrics/ClassLength:
 
 Metrics/CyclomaticComplexity:
   Max: 10
+  Exclude:
+    - 'spec/support/generate_test_pdfs.rb'
 
 Metrics/MethodLength:
   Max: 30
@@ -36,9 +38,13 @@ Metrics/MethodLength:
 
 Metrics/ModuleLength:
   Max: 200
+  Exclude:
+    - 'spec/support/generate_test_pdfs.rb'
 
 Metrics/PerceivedComplexity:
   Max: 10
+  Exclude:
+    - 'spec/support/generate_test_pdfs.rb'
 
 RSpec/BeforeAfterAll:
   Enabled: false
