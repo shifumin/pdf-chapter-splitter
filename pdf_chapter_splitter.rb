@@ -154,10 +154,11 @@ class PDFChapterSplitter
     parent_indices = []
 
     (0...current_idx).reverse_each do |i|
-      if chapters[i][:level] < current_level
-        parent_indices << i
-        break if chapters[i][:level].zero?
-      end
+      next unless chapters[i][:level] < current_level
+
+      parent_indices << i
+      current_level = chapters[i][:level] # Update current level to find parent of parent
+      break if chapters[i][:level].zero?
     end
 
     parent_indices
@@ -180,7 +181,8 @@ class PDFChapterSplitter
     chapters.each_with_index do |chapter, idx|
       next unless chapter[:level] < depth - 1
 
-      chapters_with_children[idx] = children_at_depth?(chapters, idx, depth - 1)
+      # Check if the chapter has any children (not just at target depth)
+      chapters_with_children[idx] = any_children?(chapters, idx)
     end
 
     chapters_with_children
@@ -192,9 +194,18 @@ class PDFChapterSplitter
     end
   end
 
+  def any_children?(chapters, parent_idx)
+    chapters.any? do |ch|
+      ch[:parent_indices]&.include?(parent_idx)
+    end
+  end
+
   def should_include_chapter?(chapter, idx, depth, chapters_with_children)
+    # Include chapters at the target depth level
     return true if chapter[:level] == depth - 1
 
+    # Include chapters below the target depth that don't have children
+    # This ensures chapters like 9.2, 9.3, etc. are included when using depth=4
     chapter[:level] < depth - 1 && !chapters_with_children[idx]
   end
 
@@ -235,25 +246,39 @@ class PDFChapterSplitter
     item = reader.objects[item_ref]
     return unless item
 
-    # Extract title
+    add_chapter_from_item(reader, item, chapters, level)
+    process_child_items(reader, item, chapters, level)
+    process_sibling_items(reader, item, chapters, level)
+  end
+
+  def add_chapter_from_item(reader, item, chapters, level)
     title = decode_pdf_string(item[:Title])
+    return unless title
 
-    # Extract page number
-    page_num = extract_page_number(reader, item)
+    chapter = create_chapter_entry(reader, item, title, level)
+    chapters << chapter
+    log_chapter_extraction(chapter, level) if @options[:verbose]
+  end
 
-    if title
-      chapters << {
-        title: title,
-        page: page_num,
-        level: level
-      }
-      log ("  " * level) + "- #{title} (page #{page_num || 'unknown'})" if @options[:verbose]
-    end
+  def create_chapter_entry(reader, item, title, level)
+    {
+      title: title,
+      page: extract_page_number(reader, item),
+      level: level
+    }
+  end
 
-    # Process children
-    parse_outline_item(reader, item[:First], chapters, level + 1) if item[:First]
+  def log_chapter_extraction(chapter, level)
+    log ("  " * level) + "- #{chapter[:title]} (page #{chapter[:page] || 'unknown'})"
+  end
 
-    # Process siblings
+  def process_child_items(reader, item, chapters, level)
+    return unless item[:First]
+
+    parse_outline_item(reader, item[:First], chapters, level + 1)
+  end
+
+  def process_sibling_items(reader, item, chapters, level)
     return unless item[:Next]
 
     parse_outline_item(reader, item[:Next], chapters, level)
@@ -262,19 +287,34 @@ class PDFChapterSplitter
   def decode_pdf_string(str)
     return nil unless str.is_a?(String)
 
-    # UTF-16BE処理
-    if str.bytes.first(2) == [254, 255] || str.include?("\x00")
-      begin
-        str = str.force_encoding("UTF-16BE").encode("UTF-8")
-      rescue StandardError
-        str = str.force_encoding("UTF-8")
-        str = str.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
-      end
-    else
-      str = str.force_encoding("UTF-8")
-      str = str.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
-    end
+    decoded = decode_string_encoding(str)
+    clean_decoded_string(decoded)
+  end
 
+  def decode_string_encoding(str)
+    if utf16be_encoded?(str)
+      decode_utf16be(str)
+    else
+      decode_utf8(str)
+    end
+  end
+
+  def utf16be_encoded?(str)
+    str.bytes.first(2) == [254, 255] || str.include?("\x00")
+  end
+
+  def decode_utf16be(str)
+    str.force_encoding("UTF-16BE").encode("UTF-8")
+  rescue StandardError
+    decode_utf8(str)
+  end
+
+  def decode_utf8(str)
+    str.force_encoding("UTF-8")
+    str.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
+  end
+
+  def clean_decoded_string(str)
     str = str.delete_prefix("\uFEFF") # BOM削除
     str = str.tr("　", " ") # 全角スペースを半角に
     str.strip
@@ -336,17 +376,28 @@ class PDFChapterSplitter
   def display_dry_run_info(chapters)
     display_dry_run_header
 
+    dry_run_context = create_dry_run_context(chapters)
+    file_count = display_all_files_info(dry_run_context)
+
+    puts "\nTotal files to create: #{dry_run_context[:sorted_chapters].size + file_count}"
+  end
+
+  def create_dry_run_context(chapters)
     reader = PDF::Reader.new(@pdf_path)
-    total_pages = reader.page_count
-    all_chapters = extract_chapters
-    sorted_chapters = chapters.sort_by { |ch| ch[:page] || 0 }
 
+    {
+      total_pages: reader.page_count,
+      all_chapters: extract_chapters,
+      sorted_chapters: chapters.sort_by { |ch| ch[:page] || 0 }
+    }
+  end
+
+  def display_all_files_info(context)
     file_count = 0
-    file_count += display_front_matter_info(sorted_chapters)
-    display_chapters_info(sorted_chapters, all_chapters, total_pages)
-    file_count += display_appendix_info(sorted_chapters, all_chapters, total_pages)
-
-    puts "\nTotal files to create: #{sorted_chapters.size + file_count}"
+    file_count += display_front_matter_info(context[:sorted_chapters])
+    display_chapters_info(context[:sorted_chapters], context[:all_chapters], context[:total_pages])
+    file_count += display_appendix_info(context[:sorted_chapters], context[:all_chapters], context[:total_pages])
+    file_count
   end
 
   def display_dry_run_header
@@ -447,13 +498,23 @@ class PDFChapterSplitter
 
   def split_pdf(chapters)
     doc = HexaPDF::Document.open(@pdf_path)
-    total_pages = doc.pages.count
-    all_chapters = extract_chapters
-    sorted_chapters = chapters.sort_by { |ch| ch[:page] || 0 }
+    split_context = create_split_context(doc, chapters)
 
-    process_front_matter(doc, sorted_chapters)
-    process_chapters(doc, sorted_chapters, all_chapters, total_pages)
-    process_appendix(doc, sorted_chapters, all_chapters, total_pages)
+    process_all_pdf_sections(doc, split_context)
+  end
+
+  def create_split_context(doc, chapters)
+    {
+      total_pages: doc.pages.count,
+      all_chapters: extract_chapters,
+      sorted_chapters: chapters.sort_by { |ch| ch[:page] || 0 }
+    }
+  end
+
+  def process_all_pdf_sections(doc, context)
+    process_front_matter(doc, context[:sorted_chapters])
+    process_chapters(doc, context[:sorted_chapters], context[:all_chapters], context[:total_pages])
+    process_appendix(doc, context[:sorted_chapters], context[:all_chapters], context[:total_pages])
   end
 
   def process_front_matter(doc, sorted_chapters)
@@ -508,7 +569,13 @@ class PDFChapterSplitter
     next_chapter = find_next_chapter_at_same_or_higher_level(current_idx, chapter[:level], all_chapters)
 
     if next_chapter && next_chapter[:page]
-      next_chapter[:page] - 1
+      # If the next chapter starts on the same page, use that page as the end page
+      # Otherwise, use the page before the next chapter
+      if next_chapter[:page] == chapter[:page]
+        next_chapter[:page]
+      else
+        next_chapter[:page] - 1
+      end
     elsif parent?(chapter)
       find_end_page_from_parent(chapter, all_chapters, total_pages)
     else
@@ -535,33 +602,57 @@ class PDFChapterSplitter
 
   def find_end_page_from_parent(chapter, all_chapters, total_pages)
     parent_idx = chapter[:parent_indices].last
-    parent_level = all_chapters[parent_idx][:level]
+    parent = all_chapters[parent_idx]
+    parent_level = parent[:level]
 
     parent_next = find_next_chapter_at_same_or_higher_level(parent_idx, parent_level, all_chapters)
 
     if parent_next && parent_next[:page]
-      parent_next[:page] - 1
+      # If the parent's next chapter starts on the same page as the current chapter, use that page
+      # Otherwise, use the page before the parent's next chapter
+      if parent_next[:page] == chapter[:page]
+        parent_next[:page]
+      else
+        parent_next[:page] - 1
+      end
     else
       total_pages
     end
   end
 
   def extract_pages(source_doc, start_page, end_page, filename)
-    output_path = File.join(output_dir, CHAPTERS_DIR, filename)
+    output_path = build_output_path(filename)
+    new_doc = create_pdf_with_pages(source_doc, start_page, end_page)
 
+    save_pdf_document(new_doc, output_path, filename)
+  end
+
+  def build_output_path(filename)
+    File.join(output_dir, CHAPTERS_DIR, filename)
+  end
+
+  def create_pdf_with_pages(source_doc, start_page, end_page)
     new_doc = HexaPDF::Document.new
+    copy_pages_to_document(source_doc, new_doc, start_page, end_page)
+    copy_metadata_to_document(source_doc, new_doc)
+    new_doc
+  end
 
-    # Copy pages (1-indexed to 0-indexed)
+  def copy_pages_to_document(source_doc, new_doc, start_page, end_page)
     (start_page..end_page).each do |page_num|
       page = source_doc.pages[page_num - 1]
       new_doc.pages << new_doc.import(page) if page
     end
+  end
 
-    # Copy metadata
-    new_doc.catalog[:Info] = new_doc.import(source_doc.catalog[:Info]) if source_doc.catalog[:Info]
+  def copy_metadata_to_document(source_doc, new_doc)
+    return unless source_doc.catalog[:Info]
 
-    # Save the new PDF
-    new_doc.write(output_path)
+    new_doc.catalog[:Info] = new_doc.import(source_doc.catalog[:Info])
+  end
+
+  def save_pdf_document(doc, output_path, filename)
+    doc.write(output_path)
     log "Created: #{filename}" unless @options[:verbose]
   end
 
