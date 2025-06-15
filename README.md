@@ -104,8 +104,11 @@ Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automat
 3. **Intelligent Splitting**:
    - At depth 1: Splits by top-level chapters
    - At depth 2+: Splits by sections/subsections
+   - Includes all chapters without children at or below the target depth
    - If a chapter has no subsections at the target depth, outputs the entire chapter
 4. **Page Range Calculation**: Determines the page range for each split section
+   - Correctly handles chapters that start on the same page
+   - Manages nested chapter relationships for accurate page boundaries
 5. **PDF Splitting**: Creates new PDF files for each section, preserving metadata
 
 ## Requirements for PDFs
@@ -171,6 +174,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## Recent Improvements (2025-06-15)
+
+- **Enhanced Depth Filtering**: Fixed depth filtering to properly include all chapters without children at or below the target depth (e.g., sections 5.1, 9.2 are now correctly included when using depth=4)
+- **Page Range Calculation Fix**: Resolved critical bug where chapters on the same page could have reversed page ranges
+- **Code Quality**: Refactored code to follow Single Responsibility Principle, improving maintainability
+- **Test Coverage**: Added comprehensive tests for public methods including edge cases and error scenarios (102 tests, all passing)
 
 ## Acknowledgments
 

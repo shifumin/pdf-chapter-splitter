@@ -193,6 +193,32 @@ The project uses RuboCop for code quality with the following customizations:
 
 ## Recent Updates
 
+### Major Refactoring and Bug Fixes (2025-06-15)
+
+#### Page Range Calculation Fix
+- Fixed critical bug where end page could be before start page for chapters on the same page
+- Updated `find_chapter_end_page` and `find_end_page_from_parent` methods to handle same-page chapters correctly
+
+#### Depth Filtering Enhancement
+- Fixed `find_parent_indices` to correctly build parent-child relationships
+- Enhanced depth filtering to include all chapters without children at or below target depth
+- This ensures chapters like 5.1, 5.3, 9.2, etc. are included when using depth=4
+
+#### Single Responsibility Principle Refactoring
+- Refactored major methods to follow SRP:
+  - `parse_outline_item` split into multiple focused methods
+  - `decode_pdf_string` separated encoding detection from string cleaning
+  - `display_dry_run_info` separated context creation from display
+  - `split_pdf` separated context creation from processing
+  - `extract_pages` split into path building, PDF creation, and saving
+- Improved code readability and maintainability
+
+#### Test Suite Enhancement
+- Added direct tests for `initialize` and `run` methods
+- Added tests for edge cases including corrupted PDFs
+- Maintained comprehensive test coverage (102 tests, all passing)
+- Note: Private method tests retained for historical reasons, but no new private method tests will be added
+
 ### Test Suite Enhancement (2025-06-15)
 - Added comprehensive unit tests for all private methods
 - Enhanced error handling tests including OptionParser::InvalidArgument
