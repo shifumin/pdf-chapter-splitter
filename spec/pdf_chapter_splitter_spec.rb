@@ -15,6 +15,74 @@ RSpec.describe PDFChapterSplitter do
   let(:japanese_pdf) { File.join(fixture_path, "japanese_with_outline.pdf") }
   let(:complex_pdf) { File.join(fixture_path, "complex_outline.pdf") }
 
+  describe "#initialize and #run" do
+    context "with valid PDF file" do
+      it "initializes and runs successfully" do
+        output_dir = File.dirname(pdf_with_outline)
+        chapters_dir = File.join(output_dir, "chapters")
+        FileUtils.rm_rf(chapters_dir) if Dir.exist?(chapters_dir)
+
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV << pdf_with_outline
+
+        splitter = described_class.new
+        expect { splitter.run }.not_to raise_error
+        expect(Dir.exist?(chapters_dir)).to be true
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+        FileUtils.rm_rf(chapters_dir)
+      end
+    end
+
+    context "with invalid options" do
+      it "raises error for invalid depth" do
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV.concat(["--depth", "0", pdf_with_outline])
+
+        expect { described_class.new }.to raise_error(SystemExit)
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+      end
+    end
+
+    context "with missing file" do
+      it "exits with error when file does not exist" do
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV << "nonexistent.pdf"
+
+        splitter = described_class.new
+        expect { splitter.run }.to raise_error(SystemExit)
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+      end
+    end
+
+    context "with PDF processing error" do
+      it "handles PDF processing errors gracefully" do
+        temp_dir = Dir.mktmpdir
+        corrupted_pdf = File.join(temp_dir, "corrupted.pdf")
+        File.write(corrupted_pdf, "Not a real PDF content")
+
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV << corrupted_pdf
+
+        splitter = described_class.new
+        expect { splitter.run }.to raise_error(SystemExit)
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+        FileUtils.rm_rf(temp_dir)
+      end
+    end
+  end
+
   describe "command line options" do
     context "with --help option" do
       it "displays help message and exits" do
