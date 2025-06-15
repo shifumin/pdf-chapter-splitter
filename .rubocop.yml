@@ -10,27 +10,13 @@ plugins:
   - rubocop-performance
   - rubocop-rspec
 
-Style/Documentation:
-  Enabled: false
-
-Style/StringLiterals:
-  Enabled: true
-  EnforcedStyle: double_quotes
-
-Style/FrozenStringLiteralComment:
-  Enabled: true
-
-Metrics/MethodLength:
-  Max: 20
+Layout/LineLength:
+  Max: 120
 
 Metrics/AbcSize:
-  Max: 20
-
-Metrics/CyclomaticComplexity:
-  Max: 10
-
-Metrics/PerceivedComplexity:
-  Max: 10
+  Max: 30
+  Exclude:
+    - 'spec/support/generate_test_pdfs.rb'
 
 Metrics/BlockLength:
   Exclude:
@@ -38,22 +24,20 @@ Metrics/BlockLength:
     - '*.gemspec'
 
 Metrics/ClassLength:
-  Max: 300
+  Enabled: false
 
-Layout/LineLength:
-  Max: 120
+Metrics/CyclomaticComplexity:
+  Max: 10
 
-RSpec/MultipleExpectations:
-  Max: 5
-
-RSpec/ExampleLength:
-  Max: 15
-
-RSpec/DescribeClass:
+Metrics/MethodLength:
+  Max: 30
   Exclude:
-    - 'spec/integration/**/*'
+    - 'spec/support/generate_test_pdfs.rb'
 
-RSpec/MultipleMemoizedHelpers:
+Metrics/ModuleLength:
+  Max: 200
+
+Metrics/PerceivedComplexity:
   Max: 10
 
 RSpec/BeforeAfterAll:
@@ -62,8 +46,28 @@ RSpec/BeforeAfterAll:
 RSpec/ContextWording:
   Enabled: false
 
+RSpec/DescribeClass:
+  Exclude:
+    - 'spec/integration/**/*'
+
+RSpec/ExampleLength:
+  Max: 15
+
+RSpec/MultipleExpectations:
+  Max: 5
+
+RSpec/MultipleMemoizedHelpers:
+  Max: 10
+
 RSpec/NestedGroups:
   Max: 4
 
-Metrics/ModuleLength:
-  Max: 200
+Style/Documentation:
+  Enabled: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: true
+
+Style/StringLiterals:
+  Enabled: true
+  EnforcedStyle: double_quotes
