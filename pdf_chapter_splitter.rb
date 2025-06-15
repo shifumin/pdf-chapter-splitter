@@ -17,17 +17,32 @@ class PDFChapterSplitter
   end
 
   def run
-    log "Processing PDF: #{@pdf_path}"
+    log_start_processing
 
+    chapters = prepare_all_chapters
+    execute_processing(chapters)
+
+    log_completion
+  rescue StandardError => e
+    handle_runtime_error(e)
+  end
+
+  def log_start_processing
+    log "Processing PDF: #{@pdf_path}"
+  end
+
+  def log_completion
+    log "Done!"
+  end
+
+  def handle_runtime_error(error)
+    error_exit "Error: #{error.message}\n#{error.backtrace.first(5).join("\n")}"
+  end
+
+  def prepare_all_chapters
     chapters = extract_and_validate_chapters
     actual_depth = determine_actual_depth(chapters)
-    filtered_chapters = prepare_chapters_for_processing(chapters, actual_depth)
-
-    execute_processing(filtered_chapters)
-
-    log "Done!"
-  rescue StandardError => e
-    error_exit "Error: #{e.message}\n#{e.backtrace.first(5).join("\n")}"
+    prepare_chapters_for_processing(chapters, actual_depth)
   end
 
   def extract_and_validate_chapters
@@ -60,9 +75,39 @@ class PDFChapterSplitter
   end
 
   def prepare_chapters_for_processing(chapters, actual_depth)
-    filtered_chapters = filter_chapters_by_depth(chapters, actual_depth)
-    log "Found #{filtered_chapters.size} chapters at depth #{actual_depth}"
-    filtered_chapters
+    filtered_chapters = get_filtered_chapters(chapters, actual_depth)
+
+    if actual_depth > 1
+      combine_with_intermediate_chapters(filtered_chapters, chapters, actual_depth)
+    else
+      filtered_chapters
+    end
+  end
+
+  def get_filtered_chapters(chapters, actual_depth)
+    filtered = filter_chapters_by_depth(chapters, actual_depth)
+    log_chapter_count(filtered.size, actual_depth)
+    filtered
+  end
+
+  def log_chapter_count(count, depth)
+    log "Found #{count} chapters at depth #{depth}"
+  end
+
+  def combine_with_intermediate_chapters(filtered_chapters, all_chapters, actual_depth)
+    intermediate = get_intermediate_chapters(all_chapters, actual_depth)
+    combined = merge_chapter_lists(filtered_chapters, intermediate)
+    sort_chapters_hierarchically(combined)
+  end
+
+  def get_intermediate_chapters(chapters, actual_depth)
+    intermediate = collect_intermediate_chapters(chapters, actual_depth)
+    log "Found #{intermediate.size} intermediate level chapters"
+    intermediate
+  end
+
+  def merge_chapter_lists(filtered, intermediate)
+    (filtered + intermediate).uniq { |ch| [ch[:title], ch[:page]] }
   end
 
   def execute_processing(filtered_chapters)
@@ -207,6 +252,38 @@ class PDFChapterSplitter
     # Include chapters below the target depth that don't have children
     # This ensures chapters like 9.2, 9.3, etc. are included when using depth=4
     chapter[:level] < depth - 1 && !chapters_with_children[idx]
+  end
+
+  def collect_intermediate_chapters(chapters, target_depth)
+    return [] if target_depth <= 1
+
+    intermediate = []
+
+    # Collect all chapters from level 1 to target_depth-2 that have children
+    chapters.each_with_index do |chapter, idx|
+      next unless chapter[:level] < target_depth - 1
+      next unless any_children?(chapters, idx)
+
+      intermediate << chapter.dup
+    end
+
+    intermediate
+  end
+
+  def sort_chapters_hierarchically(chapters)
+    # Sort by page first, then by level (parent chapters before child chapters)
+    chapters.sort do |a, b|
+      page_a = a[:page] || 0
+      page_b = b[:page] || 0
+
+      if page_a == page_b
+        # If on same page, parent (lower level) comes first
+        a[:level] <=> b[:level]
+      else
+        # Otherwise, sort by page number
+        page_a <=> page_b
+      end
+    end
   end
 
   def extract_chapters
@@ -388,7 +465,7 @@ class PDFChapterSplitter
     {
       total_pages: reader.page_count,
       all_chapters: extract_chapters,
-      sorted_chapters: chapters.sort_by { |ch| ch[:page] || 0 }
+      sorted_chapters: chapters
     }
   end
 
@@ -507,7 +584,7 @@ class PDFChapterSplitter
     {
       total_pages: doc.pages.count,
       all_chapters: extract_chapters,
-      sorted_chapters: chapters.sort_by { |ch| ch[:page] || 0 }
+      sorted_chapters: chapters
     }
   end
 
