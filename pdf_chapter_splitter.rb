@@ -27,6 +27,33 @@ class PDFChapterSplitter
     handle_runtime_error(e)
   end
 
+  # Public API methods
+
+  def filter_chapters_by_depth(chapters, depth)
+    chapters = chapters.dup
+    build_parent_child_relationships(chapters)
+    select_chapters_at_depth(chapters, depth)
+  end
+
+  def extract_chapters
+    reader = PDF::Reader.new(@pdf_path)
+    extract_chapters_from_reader(reader)
+  rescue PDF::Reader::MalformedPDFError => e
+    error_exit "Error: The PDF file appears to be corrupted. #{e.message}"
+  rescue StandardError => e
+    error_exit "Error reading PDF: #{e.message}"
+  end
+
+  def split_pdf(chapters)
+    HexaPDF::Document.open(@pdf_path) do |doc|
+      context = create_split_context(doc, chapters)
+      process_all_pdf_sections(doc, context)
+    end
+  end
+
+  private
+
+  # Helper methods for run
   def log_start_processing
     log "Processing PDF: #{@pdf_path}"
   end
@@ -119,8 +146,6 @@ class PDFChapterSplitter
     end
   end
 
-  private
-
   def parse_options
     options = { verbose: false, dry_run: false, force: false, depth: 1 }
 
@@ -179,13 +204,6 @@ class PDFChapterSplitter
     return if @pdf_path.downcase.end_with?(".pdf")
 
     error_exit "Error: The file must be a PDF"
-  end
-
-  def filter_chapters_by_depth(chapters, depth)
-    return [] if chapters.empty?
-
-    build_parent_child_relationships(chapters)
-    select_chapters_at_depth(chapters, depth)
   end
 
   def build_parent_child_relationships(chapters)
@@ -284,15 +302,6 @@ class PDFChapterSplitter
         page_a <=> page_b
       end
     end
-  end
-
-  def extract_chapters
-    reader = PDF::Reader.new(@pdf_path)
-    extract_chapters_from_reader(reader)
-  rescue PDF::Reader::MalformedPDFError => e
-    error_exit "Error: Malformed PDF - #{e.message}"
-  rescue StandardError => e
-    error_exit "Error reading PDF: #{e.message}"
   end
 
   def extract_chapters_from_reader(reader)
@@ -571,13 +580,6 @@ class PDFChapterSplitter
 
     log "Creating #{CHAPTERS_DIR} directory..."
     FileUtils.mkdir_p(output_path)
-  end
-
-  def split_pdf(chapters)
-    doc = HexaPDF::Document.open(@pdf_path)
-    split_context = create_split_context(doc, chapters)
-
-    process_all_pdf_sections(doc, split_context)
   end
 
   def create_split_context(doc, chapters)
