@@ -197,6 +197,12 @@ The project uses RuboCop for code quality with the following customizations:
 
 ## Recent Updates
 
+### Test Suite Optimization (2025-06-15 - Later)
+- **Removed unnecessary private method tests**: Reduced test count from 134 to 114
+- **Consolidated duplicate tests**: Merged error handling and encoding tests
+- **Improved test maintainability**: Focus on testing public interfaces rather than implementation details
+- **Confirmed SRP compliance**: Verified all methods follow Single Responsibility Principle
+
 ### Major Improvements (2025-06-15)
 
 #### 1. Default All Hierarchy Levels
@@ -220,20 +226,23 @@ The project uses RuboCop for code quality with the following customizations:
   - `run` method split into focused helper methods
   - `prepare_chapters_for_processing` decomposed into smaller functions
   - Improved separation of concerns throughout the codebase
-- **Test Coverage**: Expanded from 96 to 134 tests
-  - Added tests for critical methods like `sort_chapters_hierarchically`, `extract_chapters`, `extract_pages`
-  - Added edge case tests for nil values, error handling, and boundary conditions
-  - Achieved 100% coverage for public methods and critical private methods
+- **Test Coverage**: Optimized test suite for maintainability
+  - Removed unnecessary private method tests (reduced from 134 to 114 tests)
+  - Consolidated duplicate error handling tests into single section
+  - Merged encoding tests into unified structure
+  - Maintained 100% coverage for public methods and critical functionality
+  - All tests passing with improved execution speed
 - **RuboCop Compliance**: Fixed all style violations
 
 ## Code Quality Standards
 
 ### Testing Requirements
 - All public methods must have comprehensive test coverage
-- Critical private methods should be tested for edge cases
+- Avoid testing private method implementation details (test through public interfaces)
 - Error handling must be tested for all user-facing errors
 - Integration tests should cover the full workflow
 - Unit tests should be focused and test one thing at a time
+- Consolidate duplicate tests to improve maintainability
 
 ### RuboCop Compliance
 - Code must pass all RuboCop checks before committing
