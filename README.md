@@ -90,10 +90,14 @@ The tool creates files with the following naming convention:
 - `02_Next_Chapter.pdf` - Sequential numbering for each chapter
 - `99_付録.pdf` - Appendix (pages after the last chapter)
 
-When splitting at deeper levels (e.g., `-d 2`), filenames include parent context:
-- `01_Chapter_1_Section_1.1.pdf`
-- `02_Chapter_1_Section_1.2.pdf`
-- `03_Chapter_2_Section_2.1.pdf`
+When splitting at deeper levels (e.g., `-d 2` or higher):
+- **All parent levels are included**: Creates PDFs for all hierarchy levels from 1 to the specified depth
+- **Filenames include parent context for nested chapters**:
+  - `01_Chapter_1.pdf` (complete chapter)
+  - `02_Chapter_1_Section_1.1.pdf` (specific section)
+  - `03_Chapter_1_Section_1.2.pdf`
+  - `04_Chapter_2.pdf` (complete chapter)
+  - `05_Chapter_2_Section_2.1.pdf`
 
 Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automatically replaced with underscores.
 
@@ -102,8 +106,8 @@ Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automat
 1. **Outline Detection**: The tool reads the PDF's built-in outline/bookmark structure
 2. **Chapter Identification**: Identifies chapters at the specified depth level (default: top-level)
 3. **Intelligent Splitting**:
-   - At depth 1: Splits by top-level chapters
-   - At depth 2+: Splits by sections/subsections
+   - At depth 1: Splits by top-level chapters only
+   - At depth 2+: Creates PDFs for **all hierarchy levels** from 1 to the specified depth
    - Includes all chapters without children at or below the target depth
    - If a chapter has no subsections at the target depth, outputs the entire chapter
 4. **Page Range Calculation**: Determines the page range for each split section
@@ -177,10 +181,18 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Recent Improvements (2025-06-15)
 
-- **Enhanced Depth Filtering**: Fixed depth filtering to properly include all chapters without children at or below the target depth (e.g., sections 5.1, 9.2 are now correctly included when using depth=4)
-- **Page Range Calculation Fix**: Resolved critical bug where chapters on the same page could have reversed page ranges
-- **Code Quality**: Refactored code to follow Single Responsibility Principle, improving maintainability
-- **Test Coverage**: Added comprehensive tests for public methods including edge cases and error scenarios (102 tests, all passing)
+### Features
+- **Default All Hierarchy Levels**: When using `-d` option with depth 2+, automatically creates PDFs for all parent levels
+- **Hierarchical Sorting**: Parent chapters now appear before child sections when they start on the same page
+
+### Bug Fixes
+- **Page Range Calculation**: Fixed critical bug where chapters on the same page could have reversed page ranges
+- **Depth Filtering**: Fixed to properly include all chapters without children at or below the target depth
+
+### Code Quality
+- **Single Responsibility Principle**: Refactored core methods for better maintainability
+- **Test Coverage**: Expanded from 96 to 134 tests, covering edge cases and error scenarios
+- **100% Coverage**: All public methods and critical private methods are now fully tested
 
 ## Acknowledgments
 

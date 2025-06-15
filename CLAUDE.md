@@ -144,8 +144,12 @@ The tool provides clear error messages for:
 
 Output files follow this pattern:
 - `00_前付け.pdf` - Front matter (if exists)
-- `01_ChapterTitle.pdf` - Regular chapters with 2-digit numbering (depth 1)
-- `01_ParentChapter_ChildSection.pdf` - Nested sections include parent context (depth 2+)
+- Sequential numbering for all chapters and sections:
+  - `01_Chapter1.pdf` - Complete chapter
+  - `02_Chapter1_Section1.1.pdf` - Specific section
+  - `03_Chapter1_Section1.2.pdf`
+  - `04_Chapter2.pdf` - Complete chapter
+  - etc.
 - `99_付録.pdf` - Appendix (if exists)
 
 Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are replaced with `_`.
@@ -193,44 +197,34 @@ The project uses RuboCop for code quality with the following customizations:
 
 ## Recent Updates
 
-### Major Refactoring and Bug Fixes (2025-06-15)
+### Major Improvements (2025-06-15)
 
-#### Page Range Calculation Fix
-- Fixed critical bug where end page could be before start page for chapters on the same page
-- Updated `find_chapter_end_page` and `find_end_page_from_parent` methods to handle same-page chapters correctly
+#### 1. Default All Hierarchy Levels
+- Changed default behavior to always create PDFs for all hierarchy levels
+- When splitting at depth 2+, automatically includes all parent levels
+- Example: With `-d 4`, creates PDFs for chapters at levels 1, 2, 3, and 4
+- Removed `--include-intermediate` option as this is now the default behavior
 
-#### Depth Filtering Enhancement
-- Fixed `find_parent_indices` to correctly build parent-child relationships
-- Enhanced depth filtering to include all chapters without children at or below target depth
-- This ensures chapters like 5.1, 5.3, 9.2, etc. are included when using depth=4
+#### 2. Hierarchical Sorting
+- Added hierarchical sorting to prioritize parent chapters before child sections
+- When chapters start on the same page, parent chapters get lower file numbers
+- Example: "5章" (level 1) comes before "5.1" (level 2) when both start on page 87
 
-#### Single Responsibility Principle Refactoring
-- Refactored major methods to follow SRP:
-  - `parse_outline_item` split into multiple focused methods
-  - `decode_pdf_string` separated encoding detection from string cleaning
-  - `display_dry_run_info` separated context creation from display
-  - `split_pdf` separated context creation from processing
-  - `extract_pages` split into path building, PDF creation, and saving
-- Improved code readability and maintainability
+#### 3. Critical Bug Fixes
+- **Page Range Calculation**: Fixed bug where end page could be before start page for chapters on the same page
+- **Depth Filtering**: Fixed parent-child relationship building to correctly include all chapters without children at target depth
+- **Character Encoding**: Improved handling of Japanese and UTF-16BE encoded text
 
-#### Test Suite Enhancement
-- Added direct tests for `initialize` and `run` methods
-- Added tests for edge cases including corrupted PDFs
-- Maintained comprehensive test coverage (102 tests, all passing)
-- Note: Private method tests retained for historical reasons, but no new private method tests will be added
-
-### Test Suite Enhancement (2025-06-15)
-- Added comprehensive unit tests for all private methods
-- Enhanced error handling tests including OptionParser::InvalidArgument
-- Added tests for edge cases in outline parsing and page number extraction
-- Improved test coverage to 100% for all public and critical private methods
-- Fixed RuboCop offenses and improved code quality
-
-### Test PDF Fixtures Update
-- Updated all test PDF fixtures to ensure proper outline structure
-- Fixed page reference issues in complex_outline.pdf
-- Improved Japanese text handling in test PDFs
-- Enhanced test coverage for multi-level splitting scenarios
+#### 4. Code Quality Improvements
+- **Single Responsibility Principle**: Refactored methods to follow SRP
+  - `run` method split into focused helper methods
+  - `prepare_chapters_for_processing` decomposed into smaller functions
+  - Improved separation of concerns throughout the codebase
+- **Test Coverage**: Expanded from 96 to 134 tests
+  - Added tests for critical methods like `sort_chapters_hierarchically`, `extract_chapters`, `extract_pages`
+  - Added edge case tests for nil values, error handling, and boundary conditions
+  - Achieved 100% coverage for public methods and critical private methods
+- **RuboCop Compliance**: Fixed all style violations
 
 ## Code Quality Standards
 
@@ -245,3 +239,18 @@ The project uses RuboCop for code quality with the following customizations:
 - Code must pass all RuboCop checks before committing
 - Use `bundle exec rubocop -a` to auto-fix issues
 - Custom configurations are defined in `.rubocop.yml`
+
+## Known Issues
+
+### Prawn Circular Dependency Warning
+When running tests, you may see a warning about circular dependencies in the Prawn gem:
+```
+warning: loading in progress, circular require considered harmful - /path/to/prawn/font.rb
+```
+
+This is a known issue in Prawn 2.5.0 and does not affect the functionality of the tool. The warning occurs because:
+- Prawn's internal font loading mechanism has a circular dependency
+- This only appears during test runs when generating test PDFs
+- The production code (pdf_chapter_splitter.rb) uses HexaPDF and pdf-reader, not Prawn
+
+This warning can be safely ignored as it's an upstream issue in the Prawn library used only for test PDF generation.
