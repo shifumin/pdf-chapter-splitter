@@ -160,6 +160,13 @@ The test suite covers:
 
 Test PDFs are generated programmatically using Prawn (for content) and HexaPDF (for outlines).
 
+### RuboCop Configuration
+
+The project uses RuboCop for code quality with the following customizations:
+- Test support files (`spec/support/generate_test_pdfs.rb`) are excluded from `Metrics/AbcSize` and `Metrics/MethodLength` constraints
+  - This is intentional as PDF generation methods require complex setup for creating realistic test data
+  - The exclusion allows maintaining strict standards for production code while being pragmatic about test utilities
+
 ## Performance Considerations
 
 - Uses streaming/chunked processing where possible
