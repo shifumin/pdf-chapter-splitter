@@ -169,5 +169,11 @@ The tool validates all command-line arguments and provides clear error messages 
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### Dependencies
+
+This project uses the following libraries:
+- HexaPDF (AGPL-3.0) - Used for PDF manipulation
+- Other dependencies are listed in Gemfile with their respective licenses
 

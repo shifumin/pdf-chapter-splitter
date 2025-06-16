@@ -272,3 +272,23 @@ This is a known issue in Prawn 2.5.0 and does not affect the functionality of th
 - The production code (pdf_chapter_splitter.rb) uses HexaPDF and pdf-reader, not Prawn
 
 This warning can be safely ignored as it's an upstream issue in the Prawn library used only for test PDF generation.
+
+## License and Dependencies
+
+### Project License
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+### Key Dependencies and Their Licenses
+- **HexaPDF** (AGPL-3.0) - Used for PDF splitting functionality
+  - This is a copyleft license that may affect commercial usage
+  - Users planning commercial deployment should consider HexaPDF's commercial license
+  - See: https://hexapdf.gettalong.org/commercial-license.html
+- **pdf-reader** (MIT) - Used for PDF outline parsing
+- **Prawn** and related gems - Used only for test PDF generation (not in production code)
+
+### Public Repository Considerations
+When making this repository public:
+- No sensitive information is included in the codebase
+- All test data is programmatically generated
+- Personal information is limited to the copyright holder name in LICENSE
+- The AGPL-3.0 dependency (HexaPDF) is clearly documented in README.md
