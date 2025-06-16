@@ -51,8 +51,6 @@ bundle exec ruby spec/support/generate_test_pdfs.rb
 
 # Run tests
 bundle exec rspec
-bundle exec rspec spec/pdf_chapter_splitter_spec.rb  # Specific file
-bundle exec rspec spec/pdf_chapter_splitter_spec.rb:42  # Specific line
 
 # Run linter
 bundle exec rubocop
@@ -227,6 +225,8 @@ The project uses RuboCop for code quality with the following customizations:
 #### 4. Documentation Enhancement
 - Added detailed depth level examples in README.md showing how different depth values affect PDF splitting
 - Clarified the behavior with concrete examples of generated files for each depth level
+- Reorganized Development section: moved "Generating Test PDFs" to the top, followed by tests and linter
+- Removed test suite details for cleaner documentation
 
 ### Previous Updates (2025-06-15)
 

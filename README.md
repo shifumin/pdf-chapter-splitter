@@ -147,30 +147,23 @@ Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automat
 
 ## Development
 
+### Generating Test PDFs
+
+```bash
+bundle exec ruby spec/support/generate_test_pdfs.rb
+```
+
 ### Running Tests
 
 ```bash
 bundle exec rspec
 ```
 
-The test suite includes:
-- Comprehensive unit tests for all public methods
-- Integration tests for the complete workflow
-- Edge case testing for error handling
-- Tests for Single Responsibility Principle compliance
-- 149 tests with complete coverage for critical functionality
-
 ### Running Linter
 
 ```bash
 bundle exec rubocop
 bundle exec rubocop -a  # Auto-fix issues
-```
-
-### Generating Test PDFs
-
-```bash
-bundle exec ruby spec/support/generate_test_pdfs.rb
 ```
 
 ## Troubleshooting
