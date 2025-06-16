@@ -217,16 +217,29 @@ The project uses RuboCop for code quality with the following customizations:
   - PDF processing helpers: `pdf_page_count`, `calculate_end_page_for_chapter`
 
 #### 3. Test Suite Enhancement
-- Updated test count to 149 with complete coverage for new helper methods
-- Added tests for all refactored methods
+- Comprehensive test coverage with 128 tests, all passing
+- Added tests for all refactored methods and edge cases
 - Removed redundant tests for better maintainability
-- All tests pass with zero failures
+- Full coverage of public API and error handling
 
 #### 4. Documentation Enhancement
 - Added detailed depth level examples in README.md showing how different depth values affect PDF splitting
 - Clarified the behavior with concrete examples of generated files for each depth level
 - Reorganized Development section: moved "Generating Test PDFs" to the top, followed by tests and linter
 - Removed test suite details for cleaner documentation
+
+#### 5. Fixed Chapter Ordering for Same-Page Sections
+- Fixed an issue where chapters at the same level starting on the same page could appear in reversed order (e.g., 9.6.2 before 9.6.1)
+- Added `original_index` as a third sorting criterion in `sort_chapters_hierarchically` method
+- Now maintains the original PDF outline order when chapters have the same page number and level
+- Example: Sections 9.6.1 and 9.6.2 both starting on page 169 now appear in correct order
+- Added test coverage for this edge case
+
+#### 6. Code Quality Verification
+- Confirmed all methods follow Single Responsibility Principle (SRP)
+- Verified test coverage is comprehensive and necessary (128 tests, all passing)
+- RuboCop compliance: zero violations across all files
+- No redundant or missing tests identified
 
 ### Previous Updates (2025-06-15)
 
