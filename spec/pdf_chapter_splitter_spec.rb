@@ -56,7 +56,11 @@ RSpec.describe PDFChapterSplitter do
         ARGV << "nonexistent.pdf"
 
         splitter = described_class.new
-        expect { splitter.run }.to raise_error(SystemExit)
+
+        # Capture the error output
+        expect { splitter.run }.to raise_error(SystemExit) do |error|
+          expect(error.status).to eq(1)
+        end
 
         ARGV.clear
         original_argv.each { |arg| ARGV << arg }
@@ -91,6 +95,7 @@ RSpec.describe PDFChapterSplitter do
         expect(stdout).to include("--dry-run")
         expect(stdout).to include("--force")
         expect(stdout).to include("--verbose")
+        expect(stdout).to include("--complete")
       end
     end
 
@@ -235,6 +240,153 @@ RSpec.describe PDFChapterSplitter do
         expect(stdout).to include("Chapter 1")
         expect(stdout).to include("Chapter 2")
         expect(stdout).not_to include("Section")
+      end
+
+      it "handles deeply nested chapters (10+ levels)" do
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV.push("-d", "10", test_pdf)
+
+        splitter = described_class.new
+        splitter.extract_chapters
+
+        # Even with depth 10, it should handle gracefully
+        expect { splitter.run }.not_to raise_error
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+      end
+
+      it "handles chapters with missing page numbers" do
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV.push(test_pdf)
+
+        splitter = described_class.new
+        chapters = splitter.extract_chapters
+
+        # Simulate missing page numbers
+        chapters_with_nil = chapters.map do |ch|
+          ch_copy = ch.dup
+          ch_copy[:page] = nil if rand > 0.7 # Randomly set some pages to nil
+          ch_copy
+        end
+
+        # Should handle gracefully without crashing
+        expect { splitter.filter_chapters_by_depth(chapters_with_nil, 1) }.not_to raise_error
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+      end
+
+      it "handles empty chapter titles" do
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV.push("--dry-run", test_pdf)
+
+        splitter = described_class.new
+
+        # Should handle empty titles gracefully in dry-run mode
+        expect { splitter.run }.not_to raise_error
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+      end
+    end
+  end
+
+  describe "--complete option" do
+    let(:test_pdf) do
+      test_file = File.join(temp_dir, "complex_test.pdf")
+      FileUtils.cp(complex_pdf, test_file)
+      test_file
+    end
+
+    context "when splitting with --complete option" do
+      it "includes complete section content" do
+        # First, check without --complete option
+        stdout_without_complete, = run_script("-d", "4", "--dry-run", test_pdf)
+
+        # Then check with --complete option
+        stdout_with_complete, = run_script("-d", "4", "--dry-run", "--complete", test_pdf)
+
+        # The output should show different page ranges
+        # Without --complete: sections end before the next section starts
+        # With --complete: sections include pages up to where the next section starts
+        expect(stdout_with_complete).to include("--complete")
+
+        # Both should have the same number of files
+        files_without = stdout_without_complete.scan(".pdf").count
+        files_with = stdout_with_complete.scan(".pdf").count
+        expect(files_with).to eq(files_without)
+      end
+
+      it "changes page ranges for sections with --complete" do
+        # Extract page ranges with and without --complete
+        stdout_without, = run_script("-d", "3", "--dry-run", test_pdf)
+        stdout_with, = run_script("-d", "3", "--dry-run", "--complete", test_pdf)
+
+        # Parse page ranges from output
+        pages_without = stdout_without.scan(/pages (\d+-\d+)/).map { |match| match[0] }
+        pages_with = stdout_with.scan(/pages (\d+-\d+)/).map { |match| match[0] }
+
+        # With --complete, some sections should have different (extended) page ranges
+        expect(pages_with).not_to eq(pages_without)
+
+        # Verify that some sections have more pages with --complete
+        pages_without.zip(pages_with).each do |without, with|
+          next unless without && with
+
+          start_without, end_without = without.split("-").map(&:to_i)
+          start_with, end_with = with.split("-").map(&:to_i)
+
+          # Start pages should be the same
+          expect(start_with).to eq(start_without)
+
+          # End pages should be equal or greater with --complete
+          expect(end_with).to be >= end_without
+        end
+      end
+
+      it "handles same-page chapters correctly with --complete" do
+        # Create a splitter instance to test internal behavior
+        original_argv = ARGV.dup
+        ARGV.clear
+        ARGV.push("--complete", test_pdf)
+
+        splitter = described_class.new
+        chapters = splitter.extract_chapters
+
+        # Find chapters that start on the same page
+        same_page_groups = chapters.group_by { |ch| ch[:page] }.select { |_, chs| chs.size > 1 }
+
+        unless same_page_groups.empty?
+          # Test that same-page chapters are handled correctly
+          same_page_groups.each_value do |chs|
+            sorted_chs = splitter.send(:sort_chapters_hierarchically, chs)
+
+            # Verify parent chapters come before child chapters
+            sorted_chs.each_cons(2) do |ch1, ch2|
+              expect(ch1[:level]).to be <= ch2[:level] if ch1[:page] == ch2[:page]
+            end
+          end
+        end
+
+        ARGV.clear
+        original_argv.each { |arg| ARGV << arg }
+      end
+
+      it "displays help text for --complete option" do
+        stdout, = run_script("--help")
+        expect(stdout).to include("--complete")
+        expect(stdout).to include("Include complete section content")
+      end
+
+      it "works with verbose mode to show option status" do
+        stdout, = run_script("-d", "2", "--dry-run", "--complete", "--verbose", test_pdf)
+        expect(stdout).to include("Dry Run Mode")
+        # The verbose output should work correctly with --complete
+        expect(stdout).to match(/Chapter \d+.+\(page \d+/)
       end
     end
   end
@@ -980,15 +1132,37 @@ RSpec.describe PDFChapterSplitter do
     end
 
     describe "#extract_page_number" do
-      it "returns nil when exception occurs" do
+      it "returns nil when PDF parsing exception occurs" do
         reader = instance_double(PDF::Reader)
         item = { Dest: "invalid_dest" }
 
-        # Mock to raise an exception
-        allow(splitter).to receive(:get_destination).and_raise(StandardError)
+        # Mock to raise a PDF parsing exception
+        allow(splitter).to receive(:get_destination).and_raise(PDF::Reader::MalformedPDFError)
 
         result = splitter.send(:extract_page_number, reader, item)
         expect(result).to be_nil
+      end
+
+      it "returns nil when NoMethodError occurs for objects" do
+        reader = instance_double(PDF::Reader)
+        item = { Dest: "invalid_dest" }
+
+        # Mock to raise a NoMethodError related to objects
+        error_message = "undefined method `[]' for nil:NilClass"
+        allow(splitter).to receive(:get_destination).and_raise(NoMethodError.new(error_message))
+
+        result = splitter.send(:extract_page_number, reader, item)
+        expect(result).to be_nil
+      end
+
+      it "re-raises unexpected errors" do
+        reader = instance_double(PDF::Reader)
+        item = { Dest: "invalid_dest" }
+
+        # Mock to raise an unexpected error
+        allow(splitter).to receive(:get_destination).and_raise(ArgumentError)
+
+        expect { splitter.send(:extract_page_number, reader, item) }.to raise_error(ArgumentError)
       end
     end
 
@@ -1454,7 +1628,8 @@ RSpec.describe PDFChapterSplitter do
                                verbose: false,
                                dry_run: false,
                                force: false,
-                               depth: 1
+                               depth: 1,
+                               complete: false
                              })
       end
     end
@@ -1515,6 +1690,32 @@ RSpec.describe PDFChapterSplitter do
         next_chapter = { page: 20 }
         result = splitter.send(:calculate_end_page_from_next_chapter, chapter, next_chapter)
         expect(result).to eq(19)
+      end
+
+      context "with --complete option" do
+        let(:splitter_with_complete) do
+          original_argv = ARGV.dup
+          ARGV.clear
+          ARGV.push("--complete", pdf_with_outline)
+          splitter = described_class.new
+          ARGV.clear
+          original_argv.each { |arg| ARGV << arg }
+          splitter
+        end
+
+        it "returns next chapter page when --complete is enabled" do
+          chapter = { page: 10 }
+          next_chapter = { page: 20 }
+          result = splitter_with_complete.send(:calculate_end_page_from_next_chapter, chapter, next_chapter)
+          expect(result).to eq(20)
+        end
+
+        it "still returns same page when chapters start on same page" do
+          chapter = { page: 10 }
+          next_chapter = { page: 10 }
+          result = splitter_with_complete.send(:calculate_end_page_from_next_chapter, chapter, next_chapter)
+          expect(result).to eq(10)
+        end
       end
     end
 

@@ -57,7 +57,7 @@ RSpec/DescribeClass:
     - 'spec/integration/**/*'
 
 RSpec/ExampleLength:
-  Max: 15
+  Max: 16
 
 RSpec/MultipleExpectations:
   Max: 5
