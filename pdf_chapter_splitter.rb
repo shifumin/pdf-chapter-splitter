@@ -147,17 +147,24 @@ class PDFChapterSplitter
   end
 
   def parse_options
-    options = { verbose: false, dry_run: false, force: false, depth: 1 }
-
-    begin
-      create_option_parser(options).parse!
-    rescue OptionParser::InvalidArgument => e
-      error_exit "Error: #{e.message}"
-    end
-
-    validate_depth_option(options[:depth])
-
+    options = default_options
+    parse_command_line_options(options)
+    validate_parsed_options(options)
     options
+  end
+
+  def default_options
+    { verbose: false, dry_run: false, force: false, depth: 1 }
+  end
+
+  def parse_command_line_options(options)
+    create_option_parser(options).parse!
+  rescue OptionParser::InvalidArgument => e
+    error_exit "Error: #{e.message}"
+  end
+
+  def validate_parsed_options(options)
+    validate_depth_option(options[:depth])
   end
 
   def create_option_parser(options)
@@ -469,13 +476,18 @@ class PDFChapterSplitter
   end
 
   def create_dry_run_context(chapters)
-    reader = PDF::Reader.new(@pdf_path)
+    total_pages = pdf_page_count
+    all_chapters = extract_chapters
 
     {
-      total_pages: reader.page_count,
-      all_chapters: extract_chapters,
+      total_pages: total_pages,
+      all_chapters: all_chapters,
       sorted_chapters: chapters
     }
+  end
+
+  def pdf_page_count
+    PDF::Reader.new(@pdf_path).page_count
   end
 
   def display_all_files_info(context)
@@ -497,7 +509,7 @@ class PDFChapterSplitter
     first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
     return 0 unless first_page > 1
 
-    filename = "00_前付け.pdf"
+    filename = "000_前付け.pdf"
     pages = "1-#{first_page - 1}"
     puts "  #{filename} (pages #{pages})"
     1
@@ -510,15 +522,16 @@ class PDFChapterSplitter
   end
 
   def display_single_chapter_info(chapter, index, all_chapters, total_pages)
+    display_chapter_line(chapter, index, all_chapters, total_pages)
+    display_verbose_warnings(chapter, all_chapters) if @options[:verbose]
+  end
+
+  def display_chapter_line(chapter, index, all_chapters, total_pages)
     start_page = chapter[:page] || 1
     end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
     filename = format_chapter_filename_for_display(chapter, index, all_chapters)
 
     puts "  #{filename} (pages #{start_page}-#{end_page})"
-
-    return unless @options[:verbose]
-
-    display_verbose_warnings(chapter, all_chapters)
   end
 
   def format_chapter_filename_for_display(chapter, index, all_chapters)
@@ -560,7 +573,7 @@ class PDFChapterSplitter
 
     return 0 unless last_page < total_pages
 
-    filename = "99_付録.pdf"
+    filename = "999_付録.pdf"
     pages = "#{last_page + 1}-#{total_pages}"
     puts "  #{filename} (pages #{pages})"
     1
@@ -601,7 +614,7 @@ class PDFChapterSplitter
     return unless first_page > 1
 
     log "Extracting front matter..." if @options[:verbose]
-    extract_pages(doc, 1, first_page - 1, "00_前付け.pdf")
+    extract_pages(doc, 1, first_page - 1, "000_前付け.pdf")
   end
 
   def process_chapters(doc, sorted_chapters, all_chapters, total_pages)
@@ -638,27 +651,33 @@ class PDFChapterSplitter
     return unless last_page < total_pages
 
     log "Extracting appendix..." if @options[:verbose]
-    extract_pages(doc, last_page + 1, total_pages, "99_付録.pdf")
+    extract_pages(doc, last_page + 1, total_pages, "999_付録.pdf")
   end
 
   def find_chapter_end_page(chapter, all_chapters, total_pages)
     current_idx = get_chapter_index(chapter, all_chapters)
     return total_pages if current_idx.nil?
 
+    calculate_end_page_for_chapter(chapter, current_idx, all_chapters, total_pages)
+  end
+
+  def calculate_end_page_for_chapter(chapter, current_idx, all_chapters, total_pages)
     next_chapter = find_next_chapter_at_same_or_higher_level(current_idx, chapter[:level], all_chapters)
 
     if next_chapter && next_chapter[:page]
-      # If the next chapter starts on the same page, use that page as the end page
-      # Otherwise, use the page before the next chapter
-      if next_chapter[:page] == chapter[:page]
-        next_chapter[:page]
-      else
-        next_chapter[:page] - 1
-      end
+      calculate_end_page_from_next_chapter(chapter, next_chapter)
     elsif parent?(chapter)
       find_end_page_from_parent(chapter, all_chapters, total_pages)
     else
       total_pages
+    end
+  end
+
+  def calculate_end_page_from_next_chapter(chapter, next_chapter)
+    if next_chapter[:page] == chapter[:page]
+      next_chapter[:page]
+    else
+      next_chapter[:page] - 1
     end
   end
 
@@ -736,28 +755,37 @@ class PDFChapterSplitter
   end
 
   def format_chapter_filename(number, title)
-    # Format number with zero padding
-    num_str = format("%02d", number)
-
-    # Clean title for filename
-    clean_title = title.gsub(INVALID_FILENAME_CHARS, "_")
-
-    "#{num_str}_#{clean_title}.pdf"
+    num_str = format_file_number(number)
+    clean_title = sanitize_filename(title)
+    build_filename(num_str, clean_title)
   end
 
   def format_chapter_filename_with_parent(number, title, parent_title)
-    # Format number with zero padding
-    num_str = format("%02d", number)
-
-    # Clean titles for filename
-    clean_parent = parent_title ? parent_title.gsub(INVALID_FILENAME_CHARS, "_") : ""
-    clean_title = title.gsub(INVALID_FILENAME_CHARS, "_")
+    num_str = format_file_number(number)
+    clean_title = sanitize_filename(title)
 
     if parent_title
-      "#{num_str}_#{clean_parent}_#{clean_title}.pdf"
+      build_filename_with_parent(num_str, clean_title, parent_title)
     else
-      "#{num_str}_#{clean_title}.pdf"
+      build_filename(num_str, clean_title)
     end
+  end
+
+  def format_file_number(number)
+    format("%03d", number)
+  end
+
+  def sanitize_filename(text)
+    text.gsub(INVALID_FILENAME_CHARS, "_")
+  end
+
+  def build_filename_with_parent(num_str, clean_title, parent_title)
+    clean_parent = sanitize_filename(parent_title)
+    "#{num_str}_#{clean_parent}_#{clean_title}.pdf"
+  end
+
+  def build_filename(num_str, clean_title)
+    "#{num_str}_#{clean_title}.pdf"
   end
 
   def output_dir

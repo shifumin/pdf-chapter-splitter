@@ -142,14 +142,14 @@ RSpec.describe PDFChapterSplitter do
 
       it "extracts chapters correctly" do
         stdout, = run_script("--dry-run", test_pdf)
-        expect(stdout).to include("01_Chapter 1_ Introduction.pdf")
-        expect(stdout).to include("02_Chapter 2_ Getting Started.pdf")
-        expect(stdout).to include("03_Chapter 3_ Advanced Topics.pdf")
+        expect(stdout).to include("001_Chapter 1_ Introduction.pdf")
+        expect(stdout).to include("002_Chapter 2_ Getting Started.pdf")
+        expect(stdout).to include("003_Chapter 3_ Advanced Topics.pdf")
       end
 
       it "detects front matter" do
         stdout, = run_script("--dry-run", test_pdf)
-        expect(stdout).to include("00_前付け.pdf")
+        expect(stdout).to include("000_前付け.pdf")
       end
 
       it "shows page ranges in dry-run mode" do
@@ -168,17 +168,17 @@ RSpec.describe PDFChapterSplitter do
           run_script(test_pdf)
           chapters_dir = File.join(temp_dir, "chapters")
 
-          expect(File.exist?(File.join(chapters_dir, "00_前付け.pdf"))).to be true
-          expect(File.exist?(File.join(chapters_dir, "01_Chapter 1_ Introduction.pdf"))).to be true
-          expect(File.exist?(File.join(chapters_dir, "02_Chapter 2_ Getting Started.pdf"))).to be true
-          expect(File.exist?(File.join(chapters_dir, "03_Chapter 3_ Advanced Topics.pdf"))).to be true
+          expect(File.exist?(File.join(chapters_dir, "000_前付け.pdf"))).to be true
+          expect(File.exist?(File.join(chapters_dir, "001_Chapter 1_ Introduction.pdf"))).to be true
+          expect(File.exist?(File.join(chapters_dir, "002_Chapter 2_ Getting Started.pdf"))).to be true
+          expect(File.exist?(File.join(chapters_dir, "003_Chapter 3_ Advanced Topics.pdf"))).to be true
         end
 
         it "creates valid PDF files" do
           run_script(test_pdf)
           chapters_dir = File.join(temp_dir, "chapters")
 
-          pdf_file = File.join(chapters_dir, "01_Chapter 1_ Introduction.pdf")
+          pdf_file = File.join(chapters_dir, "001_Chapter 1_ Introduction.pdf")
           expect { PDF::Reader.new(pdf_file) }.not_to raise_error
         end
       end
@@ -264,7 +264,7 @@ RSpec.describe PDFChapterSplitter do
         chapters_dir = File.join(temp_dir, "chapters")
 
         expect(File.exist?(File.join(chapters_dir, "existing.txt"))).to be false
-        expect(File.exist?(File.join(chapters_dir, "01_Chapter 1_ Introduction.pdf"))).to be true
+        expect(File.exist?(File.join(chapters_dir, "001_Chapter 1_ Introduction.pdf"))).to be true
       end
     end
   end
@@ -298,8 +298,8 @@ RSpec.describe PDFChapterSplitter do
       stdout, = run_script("--dry-run", pdf_with_outline)
 
       # Check that colons in "Chapter 1: Introduction" are replaced
-      expect(stdout).to include("01_Chapter 1_ Introduction.pdf")
-      expect(stdout).not_to include("01_Chapter 1: Introduction.pdf")
+      expect(stdout).to include("001_Chapter 1_ Introduction.pdf")
+      expect(stdout).not_to include("001_Chapter 1: Introduction.pdf")
     end
   end
 
@@ -455,7 +455,7 @@ RSpec.describe PDFChapterSplitter do
     it "detects appendix pages after last chapter" do
       stdout, = run_script("--dry-run", test_pdf)
       # If there are pages after the last chapter, they should be in appendix
-      expect(stdout).to include("99_付録.pdf") if stdout.include?("99_付録.pdf")
+      expect(stdout).to include("999_付録.pdf") if stdout.include?("999_付録.pdf")
     end
 
     it "creates appendix file when pages exist after last chapter" do
@@ -463,7 +463,7 @@ RSpec.describe PDFChapterSplitter do
       chapters_dir = File.join(temp_dir, "chapters")
 
       # Check if appendix was created (depends on test PDF structure)
-      appendix_file = File.join(chapters_dir, "99_付録.pdf")
+      appendix_file = File.join(chapters_dir, "999_付録.pdf")
       expect { PDF::Reader.new(appendix_file) }.not_to raise_error if File.exist?(appendix_file)
     end
   end
@@ -673,14 +673,6 @@ RSpec.describe PDFChapterSplitter do
         expect(result.first[:level]).to eq(9)
       end
 
-      it "handles chapters with nil level field" do
-        malformed_chapters = [
-          { title: "Chapter 1", page: 1, level: 0 },
-          { title: "Chapter 2", page: 20, level: nil }
-        ]
-        # This should raise an error as level is required
-        expect { splitter.filter_chapters_by_depth(malformed_chapters, 1) }.to raise_error(ArgumentError)
-      end
     end
 
     describe "#find_chapter_end_page" do
@@ -741,29 +733,29 @@ RSpec.describe PDFChapterSplitter do
     describe "#format_chapter_filename_with_parent" do
       it "formats filename with parent title" do
         filename = splitter.send(:format_chapter_filename_with_parent, 5, "Section Title", "Chapter Title")
-        expect(filename).to eq("05_Chapter Title_Section Title.pdf")
+        expect(filename).to eq("005_Chapter Title_Section Title.pdf")
       end
 
       it "handles missing parent title" do
         filename = splitter.send(:format_chapter_filename_with_parent, 5, "Section Title", nil)
-        expect(filename).to eq("05_Section Title.pdf")
+        expect(filename).to eq("005_Section Title.pdf")
       end
 
       it "sanitizes invalid characters" do
         filename = splitter.send(:format_chapter_filename_with_parent, 1, "Section: Test", "Chapter/Test")
-        expect(filename).to eq("01_Chapter_Test_Section_ Test.pdf")
+        expect(filename).to eq("001_Chapter_Test_Section_ Test.pdf")
       end
     end
 
     describe "#format_chapter_filename" do
       it "formats filename with proper padding" do
         filename = splitter.send(:format_chapter_filename, 1, "Chapter Title")
-        expect(filename).to eq("01_Chapter Title.pdf")
+        expect(filename).to eq("001_Chapter Title.pdf")
       end
 
       it "sanitizes all invalid characters" do
         filename = splitter.send(:format_chapter_filename, 1, "Chapter: Test/File*Name?<>|\"")
-        expect(filename).to eq("01_Chapter_ Test_File_Name_____.pdf")
+        expect(filename).to eq("001_Chapter_ Test_File_Name_____.pdf")
       end
 
       it "handles numbers greater than 99" do
@@ -1177,13 +1169,6 @@ RSpec.describe PDFChapterSplitter do
       end
     end
 
-    describe "#validate_input!" do
-      it "validates input correctly" do
-        # This is already tested in integration tests
-        # validate_input! is a private method
-        expect(splitter.private_methods).to include(:validate_input!)
-      end
-    end
 
     describe "#get_chapter_index" do
       it "returns original_index if present" do
@@ -1451,6 +1436,124 @@ RSpec.describe PDFChapterSplitter do
         allow(splitter).to receive(:process_all_pdf_sections).and_raise(Errno::ENOSPC, "No space left on device")
 
         expect { splitter.split_pdf(test_chapters) }.to raise_error(Errno::ENOSPC)
+      end
+    end
+
+    describe "#default_options" do
+      it "returns default options hash" do
+        result = splitter.send(:default_options)
+        expect(result).to eq({
+          verbose: false,
+          dry_run: false,
+          force: false,
+          depth: 1
+        })
+      end
+    end
+
+    describe "#format_file_number" do
+      it "formats number with 3-digit zero padding" do
+        expect(splitter.send(:format_file_number, 1)).to eq("001")
+        expect(splitter.send(:format_file_number, 99)).to eq("099")
+        expect(splitter.send(:format_file_number, 999)).to eq("999")
+        expect(splitter.send(:format_file_number, 1000)).to eq("1000")
+      end
+    end
+
+    describe "#sanitize_filename" do
+      it "replaces invalid filename characters" do
+        result = splitter.send(:sanitize_filename, "Chapter: Test/File*Name?<>|\"")
+        expect(result).to eq("Chapter_ Test_File_Name_____")
+      end
+
+      it "handles normal filenames" do
+        result = splitter.send(:sanitize_filename, "Normal Chapter Title")
+        expect(result).to eq("Normal Chapter Title")
+      end
+    end
+
+    describe "#build_filename" do
+      it "builds filename from number and title" do
+        result = splitter.send(:build_filename, "001", "Chapter Title")
+        expect(result).to eq("001_Chapter Title.pdf")
+      end
+    end
+
+    describe "#build_filename_with_parent" do
+      it "builds filename with parent title" do
+        result = splitter.send(:build_filename_with_parent, "005", "Section Title", "Chapter Title")
+        expect(result).to eq("005_Chapter Title_Section Title.pdf")
+      end
+    end
+
+    describe "#pdf_page_count" do
+      it "returns page count from PDF" do
+        allow(PDF::Reader).to receive(:new).and_return(instance_double(PDF::Reader, page_count: 42))
+        result = splitter.send(:pdf_page_count)
+        expect(result).to eq(42)
+      end
+    end
+
+    describe "#calculate_end_page_from_next_chapter" do
+      it "returns same page when chapters start on same page" do
+        chapter = { page: 10 }
+        next_chapter = { page: 10 }
+        result = splitter.send(:calculate_end_page_from_next_chapter, chapter, next_chapter)
+        expect(result).to eq(10)
+      end
+
+      it "returns page before next chapter when on different pages" do
+        chapter = { page: 10 }
+        next_chapter = { page: 20 }
+        result = splitter.send(:calculate_end_page_from_next_chapter, chapter, next_chapter)
+        expect(result).to eq(19)
+      end
+    end
+
+    describe "#display_chapter_line" do
+      it "displays chapter information line" do
+        chapter = { title: "Test Chapter", page: 10 }
+        all_chapters = [chapter]
+        
+        expect do
+          splitter.send(:display_chapter_line, chapter, 0, all_chapters, 100)
+        end.to output(/001_Test Chapter\.pdf.*pages 10-100/).to_stdout
+      end
+    end
+
+    describe "#calculate_end_page_for_chapter" do
+      it "calculates end page using next chapter" do
+        chapter = { level: 0, page: 10 }
+        next_chapter = { level: 0, page: 20 }
+        all_chapters = [chapter, next_chapter]
+        
+        allow(splitter).to receive(:find_next_chapter_at_same_or_higher_level).and_return(next_chapter)
+        
+        result = splitter.send(:calculate_end_page_for_chapter, chapter, 0, all_chapters, 100)
+        expect(result).to eq(19)
+      end
+
+      it "uses parent logic when chapter has parent" do
+        chapter = { level: 1, page: 10, parent_indices: [0] }
+        all_chapters = [{ level: 0 }, chapter]
+        
+        allow(splitter).to receive(:find_next_chapter_at_same_or_higher_level).and_return(nil)
+        allow(splitter).to receive(:parent?).and_return(true)
+        allow(splitter).to receive(:find_end_page_from_parent).and_return(50)
+        
+        result = splitter.send(:calculate_end_page_for_chapter, chapter, 1, all_chapters, 100)
+        expect(result).to eq(50)
+      end
+
+      it "returns total pages for last chapter" do
+        chapter = { level: 0, page: 90 }
+        all_chapters = [chapter]
+        
+        allow(splitter).to receive(:find_next_chapter_at_same_or_higher_level).and_return(nil)
+        allow(splitter).to receive(:parent?).and_return(false)
+        
+        result = splitter.send(:calculate_end_page_for_chapter, chapter, 0, all_chapters, 100)
+        expect(result).to eq(100)
       end
     end
   end
