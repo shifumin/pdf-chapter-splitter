@@ -672,7 +672,6 @@ RSpec.describe PDFChapterSplitter do
         expect(result.size).to eq(1)
         expect(result.first[:level]).to eq(9)
       end
-
     end
 
     describe "#find_chapter_end_page" do
@@ -1169,7 +1168,6 @@ RSpec.describe PDFChapterSplitter do
       end
     end
 
-
     describe "#get_chapter_index" do
       it "returns original_index if present" do
         chapter = { original_index: 5, title: "Test", page: 10 }
@@ -1225,6 +1223,16 @@ RSpec.describe PDFChapterSplitter do
         result = splitter.send(:sort_chapters_hierarchically, chapters)
         expect(result[0][:title]).to eq("Chapter 2") # nil treated as 0
         expect(result[1][:title]).to eq("Chapter 1")
+      end
+
+      it "maintains original order for same level and page" do
+        chapters = [
+          { title: "Section 9.6.2", page: 169, level: 2, original_index: 4 },
+          { title: "Section 9.6.1", page: 169, level: 2, original_index: 3 }
+        ]
+        result = splitter.send(:sort_chapters_hierarchically, chapters)
+        expect(result[0][:title]).to eq("Section 9.6.1")
+        expect(result[1][:title]).to eq("Section 9.6.2")
       end
     end
 
@@ -1443,11 +1451,11 @@ RSpec.describe PDFChapterSplitter do
       it "returns default options hash" do
         result = splitter.send(:default_options)
         expect(result).to eq({
-          verbose: false,
-          dry_run: false,
-          force: false,
-          depth: 1
-        })
+                               verbose: false,
+                               dry_run: false,
+                               force: false,
+                               depth: 1
+                             })
       end
     end
 
@@ -1514,7 +1522,7 @@ RSpec.describe PDFChapterSplitter do
       it "displays chapter information line" do
         chapter = { title: "Test Chapter", page: 10 }
         all_chapters = [chapter]
-        
+
         expect do
           splitter.send(:display_chapter_line, chapter, 0, all_chapters, 100)
         end.to output(/001_Test Chapter\.pdf.*pages 10-100/).to_stdout
@@ -1526,9 +1534,9 @@ RSpec.describe PDFChapterSplitter do
         chapter = { level: 0, page: 10 }
         next_chapter = { level: 0, page: 20 }
         all_chapters = [chapter, next_chapter]
-        
+
         allow(splitter).to receive(:find_next_chapter_at_same_or_higher_level).and_return(next_chapter)
-        
+
         result = splitter.send(:calculate_end_page_for_chapter, chapter, 0, all_chapters, 100)
         expect(result).to eq(19)
       end
@@ -1536,11 +1544,13 @@ RSpec.describe PDFChapterSplitter do
       it "uses parent logic when chapter has parent" do
         chapter = { level: 1, page: 10, parent_indices: [0] }
         all_chapters = [{ level: 0 }, chapter]
-        
-        allow(splitter).to receive(:find_next_chapter_at_same_or_higher_level).and_return(nil)
-        allow(splitter).to receive(:parent?).and_return(true)
-        allow(splitter).to receive(:find_end_page_from_parent).and_return(50)
-        
+
+        allow(splitter).to receive_messages(
+          find_next_chapter_at_same_or_higher_level: nil,
+          parent?: true,
+          find_end_page_from_parent: 50
+        )
+
         result = splitter.send(:calculate_end_page_for_chapter, chapter, 1, all_chapters, 100)
         expect(result).to eq(50)
       end
@@ -1548,10 +1558,12 @@ RSpec.describe PDFChapterSplitter do
       it "returns total pages for last chapter" do
         chapter = { level: 0, page: 90 }
         all_chapters = [chapter]
-        
-        allow(splitter).to receive(:find_next_chapter_at_same_or_higher_level).and_return(nil)
-        allow(splitter).to receive(:parent?).and_return(false)
-        
+
+        allow(splitter).to receive_messages(
+          find_next_chapter_at_same_or_higher_level: nil,
+          parent?: false
+        )
+
         result = splitter.send(:calculate_end_page_for_chapter, chapter, 0, all_chapters, 100)
         expect(result).to eq(100)
       end
