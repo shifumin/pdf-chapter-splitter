@@ -85,19 +85,19 @@ bundle exec ruby pdf_chapter_splitter.rb -d 2 -n -v document.pdf
 
 The tool creates files with the following naming convention:
 
-- `00_前付け.pdf` - Front matter (pages before the first chapter)
-- `01_Chapter_Title.pdf` - Regular chapters with 2-digit numbering
-- `02_Next_Chapter.pdf` - Sequential numbering for each chapter
-- `99_付録.pdf` - Appendix (pages after the last chapter)
+- `000_前付け.pdf` - Front matter (pages before the first chapter)
+- `001_Chapter_Title.pdf` - Regular chapters with 3-digit numbering
+- `002_Next_Chapter.pdf` - Sequential numbering for each chapter
+- `999_付録.pdf` - Appendix (pages after the last chapter)
 
 When splitting at deeper levels (e.g., `-d 2` or higher):
 - **All parent levels are included**: Creates PDFs for all hierarchy levels from 1 to the specified depth
 - **Filenames include parent context for nested chapters**:
-  - `01_Chapter_1.pdf` (complete chapter)
-  - `02_Chapter_1_Section_1.1.pdf` (specific section)
-  - `03_Chapter_1_Section_1.2.pdf`
-  - `04_Chapter_2.pdf` (complete chapter)
-  - `05_Chapter_2_Section_2.1.pdf`
+  - `001_Chapter_1.pdf` (complete chapter)
+  - `002_Chapter_1_Section_1.1.pdf` (specific section)
+  - `003_Chapter_1_Section_1.2.pdf`
+  - `004_Chapter_2.pdf` (complete chapter)
+  - `005_Chapter_2_Section_2.1.pdf`
 
 Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automatically replaced with underscores.
 
@@ -133,7 +133,8 @@ The test suite includes:
 - Comprehensive unit tests for all public methods
 - Integration tests for the complete workflow
 - Edge case testing for error handling
-- 100% test coverage for critical functionality
+- Tests for Single Responsibility Principle compliance
+- 149 tests with complete coverage for critical functionality
 
 ### Running Linter
 

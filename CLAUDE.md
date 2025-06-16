@@ -148,14 +148,14 @@ The tool provides clear error messages for:
 ### File Naming Convention
 
 Output files follow this pattern:
-- `00_前付け.pdf` - Front matter (if exists)
-- Sequential numbering for all chapters and sections:
-  - `01_Chapter1.pdf` - Complete chapter
-  - `02_Chapter1_Section1.1.pdf` - Specific section
-  - `03_Chapter1_Section1.2.pdf`
-  - `04_Chapter2.pdf` - Complete chapter
+- `000_前付け.pdf` - Front matter (if exists)
+- Sequential numbering for all chapters and sections (3-digit padding):
+  - `001_Chapter1.pdf` - Complete chapter
+  - `002_Chapter1_Section1.1.pdf` - Specific section
+  - `003_Chapter1_Section1.2.pdf`
+  - `004_Chapter2.pdf` - Complete chapter
   - etc.
-- `99_付録.pdf` - Appendix (if exists)
+- `999_付録.pdf` - Appendix (if exists)
 
 Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are replaced with `_`.
 
@@ -202,15 +202,35 @@ The project uses RuboCop for code quality with the following customizations:
 
 ## Recent Updates
 
-### Final Code Quality Review (2025-06-15 - Final)
+### Latest Updates (2025-06-16)
+
+#### 1. File Naming Enhancement
+- Changed file numbering from 2-digit to 3-digit padding (e.g., `01_` → `001_`)
+- Supports up to 999 chapters without numbering issues
+- Applied to front matter (`000_`), chapters, and appendix (`999_`)
+
+#### 2. Single Responsibility Principle Refactoring
+- Refactored all methods to follow SRP strictly
+- Split complex methods into focused, single-purpose functions
+- Added new helper methods for better code organization:
+  - File formatting helpers: `format_file_number`, `sanitize_filename`, `build_filename`
+  - Option parsing helpers: `default_options`, `parse_command_line_options`, `validate_parsed_options`
+  - Display helpers: `display_chapter_line`, `calculate_end_page_from_next_chapter`
+  - PDF processing helpers: `pdf_page_count`, `calculate_end_page_for_chapter`
+
+#### 3. Test Suite Enhancement
+- Updated test count to 149 with complete coverage for new helper methods
+- Added tests for all refactored methods
+- Removed redundant tests for better maintainability
+- All tests pass with zero failures
+
+### Previous Updates (2025-06-15)
+
+#### Public API and Code Quality
 - **Public API clarification**: Moved helper methods to private, keeping only essential public methods (initialize, run, filter_chapters_by_depth, extract_chapters, split_pdf)
-- **Test suite refinement**: Increased test count to 138 with comprehensive edge case coverage
-  - Added tests for nil elements, deep nesting (10+ levels), missing fields
-  - Added direct unit tests for split_pdf method
-  - Added tests for large datasets (1000+ chapters)
+- **Test suite refinement**: Comprehensive edge case coverage including nil elements, deep nesting (10+ levels), missing fields
 - **Fixed method duplication**: Removed duplicate method definitions that were causing conflicts
 - **RuboCop compliance**: All files pass with zero violations
-- **SRP verification**: Confirmed all methods follow Single Responsibility Principle
 
 ### Major Improvements (2025-06-15)
 
@@ -235,12 +255,6 @@ The project uses RuboCop for code quality with the following customizations:
   - `run` method split into focused helper methods
   - `prepare_chapters_for_processing` decomposed into smaller functions
   - Improved separation of concerns throughout the codebase
-- **Test Coverage**: Comprehensive test suite with 138 tests
-  - Removed unnecessary private method tests while adding edge case coverage
-  - Added direct unit tests for all public methods
-  - Consolidated duplicate tests for better maintainability
-  - 100% coverage for public API with edge cases including nil handling, deep nesting, and large datasets
-  - All tests passing with execution time under 0.3 seconds
 - **RuboCop Compliance**: Fixed all style violations
 
 ## Code Quality Standards
