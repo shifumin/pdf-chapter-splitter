@@ -224,6 +224,10 @@ The project uses RuboCop for code quality with the following customizations:
 - Removed redundant tests for better maintainability
 - All tests pass with zero failures
 
+#### 4. Documentation Enhancement
+- Added detailed depth level examples in README.md showing how different depth values affect PDF splitting
+- Clarified the behavior with concrete examples of generated files for each depth level
+
 ### Previous Updates (2025-06-15)
 
 #### Public API and Code Quality

@@ -54,6 +54,44 @@ This will:
 -h, --help         # Display help message
 ```
 
+### Understanding Depth Levels
+
+The `--depth` option controls how deeply the tool splits your PDF based on its outline hierarchy:
+
+**Example PDF Structure:**
+```
+Chapter 1: Introduction
+  ├── 1.1 Background
+  ├── 1.2 Motivation
+  │    ├── 1.2.1 Historical Context
+  │    └── 1.2.2 Current Challenges
+  └── 1.3 Overview
+Chapter 2: Methodology
+  ├── 2.1 Research Design
+  └── 2.2 Data Collection
+Chapter 3: Results
+```
+
+**Depth 1 (default):** Creates PDFs for chapters only
+- `001_Chapter 1_ Introduction.pdf` (pages 1-50)
+- `002_Chapter 2_ Methodology.pdf` (pages 51-80)
+- `003_Chapter 3_ Results.pdf` (pages 81-120)
+
+**Depth 2:** Creates PDFs for chapters AND sections
+- `001_Chapter 1_ Introduction.pdf` (pages 1-50) - full chapter
+- `002_Chapter 1_ Introduction_1.1 Background.pdf` (pages 1-15)
+- `003_Chapter 1_ Introduction_1.2 Motivation.pdf` (pages 16-35)
+- `004_Chapter 1_ Introduction_1.3 Overview.pdf` (pages 36-50)
+- `005_Chapter 2_ Methodology.pdf` (pages 51-80) - full chapter
+- `006_Chapter 2_ Methodology_2.1 Research Design.pdf` (pages 51-65)
+- `007_Chapter 2_ Methodology_2.2 Data Collection.pdf` (pages 66-80)
+- `008_Chapter 3_ Results.pdf` (pages 81-120) - no sections, so only full chapter
+
+**Depth 3:** Creates PDFs for chapters, sections, AND subsections
+- All files from depth 2, plus:
+- `009_Chapter 1_ Introduction_1.2.1 Historical Context.pdf` (pages 16-25)
+- `010_Chapter 1_ Introduction_1.2.2 Current Challenges.pdf` (pages 26-35)
+
 ### Examples
 
 Preview splitting without creating files:
@@ -87,33 +125,19 @@ The tool creates files with the following naming convention:
 
 - `000_前付け.pdf` - Front matter (pages before the first chapter)
 - `001_Chapter_Title.pdf` - Regular chapters with 3-digit numbering
-- `002_Next_Chapter.pdf` - Sequential numbering for each chapter
 - `999_付録.pdf` - Appendix (pages after the last chapter)
 
-When splitting at deeper levels (e.g., `-d 2` or higher):
-- **All parent levels are included**: Creates PDFs for all hierarchy levels from 1 to the specified depth
-- **Filenames include parent context for nested chapters**:
-  - `001_Chapter_1.pdf` (complete chapter)
-  - `002_Chapter_1_Section_1.1.pdf` (specific section)
-  - `003_Chapter_1_Section_1.2.pdf`
-  - `004_Chapter_2.pdf` (complete chapter)
-  - `005_Chapter_2_Section_2.1.pdf`
-
 Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automatically replaced with underscores.
+
+**Note:** When using depth levels 2 or higher, filenames include parent context as shown in the "Understanding Depth Levels" section above.
 
 ## How It Works
 
 1. **Outline Detection**: The tool reads the PDF's built-in outline/bookmark structure
 2. **Chapter Identification**: Identifies chapters at the specified depth level (default: top-level)
-3. **Intelligent Splitting**:
-   - At depth 1: Splits by top-level chapters only
-   - At depth 2+: Creates PDFs for **all hierarchy levels** from 1 to the specified depth
-   - Includes all chapters without children at or below the target depth
-   - If a chapter has no subsections at the target depth, outputs the entire chapter
-4. **Page Range Calculation**: Determines the page range for each split section
-   - Correctly handles chapters that start on the same page
-   - Manages nested chapter relationships for accurate page boundaries
-5. **PDF Splitting**: Creates new PDF files for each section, preserving metadata
+3. **Intelligent Splitting**: Based on the depth level, creates appropriate PDF files as shown in the examples above
+4. **Page Range Calculation**: Determines accurate page boundaries for each section, handling edge cases like chapters starting on the same page
+5. **PDF Splitting**: Creates new PDF files for each section, preserving original metadata
 
 ## Requirements for PDFs
 
