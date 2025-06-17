@@ -51,6 +51,7 @@ This will:
 -n, --dry-run      # Preview what would be done without actually splitting
 -f, --force        # Remove existing chapters/ directory if it exists
 -v, --verbose      # Show detailed progress information
+-c, --complete     # Include complete section content until next section starts
 -h, --help         # Display help message
 ```
 
@@ -117,6 +118,24 @@ bundle exec ruby pdf_chapter_splitter.rb -v document.pdf
 Combine options (preview section-level split with verbose output):
 ```bash
 bundle exec ruby pdf_chapter_splitter.rb -d 2 -n -v document.pdf
+```
+
+### The --complete Option
+
+By default, when splitting sections, each PDF contains only the pages from the section's start up to (but not including) the next section's start page. The `--complete` option changes this behavior to include all pages up to where the next section begins.
+
+**Without --complete (default):**
+- Section 9.8.1 starting on page 171, with 9.8.2 starting on page 172
+- Result: `9.8.1.pdf` contains only page 171
+
+**With --complete:**
+- Section 9.8.1 starting on page 171, with 9.8.2 starting on page 172
+- Result: `9.8.1.pdf` contains pages 171-172 (includes content until the next section)
+
+This is useful when section content flows across multiple pages and you want each PDF to contain the complete section content.
+
+```bash
+bundle exec ruby pdf_chapter_splitter.rb -d 4 -c document.pdf
 ```
 
 ## Output Format

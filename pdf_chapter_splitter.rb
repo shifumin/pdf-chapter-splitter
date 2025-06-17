@@ -17,14 +17,7 @@ class PDFChapterSplitter
   end
 
   def run
-    log_start_processing
-
-    chapters = prepare_all_chapters
-    execute_processing(chapters)
-
-    log_completion
-  rescue StandardError => e
-    handle_runtime_error(e)
+    execute_with_error_handling
   end
 
   # Public API methods
@@ -52,6 +45,22 @@ class PDFChapterSplitter
   end
 
   private
+
+  # Main execution flow
+  def execute_with_error_handling
+    perform_splitting
+  rescue StandardError => e
+    handle_runtime_error(e)
+  end
+
+  def perform_splitting
+    log_start_processing
+
+    chapters = prepare_all_chapters
+    execute_processing(chapters)
+
+    log_completion
+  end
 
   # Helper methods for run
   def log_start_processing
@@ -154,7 +163,7 @@ class PDFChapterSplitter
   end
 
   def default_options
-    { verbose: false, dry_run: false, force: false, depth: 1 }
+    { verbose: false, dry_run: false, force: false, depth: 1, complete: false }
   end
 
   def parse_command_line_options(options)
@@ -187,6 +196,10 @@ class PDFChapterSplitter
 
       opts.on("-v", "--verbose", "Show detailed progress") do
         options[:verbose] = true
+      end
+
+      opts.on("-c", "--complete", "Include complete section content until next section starts") do
+        options[:complete] = true
       end
 
       opts.on("-h", "--help", "Show this help message") do
@@ -417,6 +430,8 @@ class PDFChapterSplitter
   def clean_decoded_string(str)
     str = str.delete_prefix("\uFEFF") # BOM削除
     str = str.tr("　", " ") # 全角スペースを半角に
+    # 改行文字をスペースに置換（複数の改行は1つのスペースに）
+    str = str.gsub(/[\r\n]+/, " ")
     str.strip
   end
 
@@ -432,8 +447,14 @@ class PDFChapterSplitter
     when String
       extract_page_from_string_dest(dest)
     end
-  rescue StandardError
+  rescue PDF::Reader::MalformedPDFError, PDF::Reader::InvalidObjectError
+    # Handle specific PDF parsing errors
     nil
+  rescue NoMethodError => e
+    # Handle cases where PDF structure is unexpected
+    return nil if e.message.include?("objects") || e.message.include?("[]")
+
+    raise # Re-raise if it's an unexpected NoMethodError
   end
 
   def get_destination(reader, item)
@@ -477,9 +498,9 @@ class PDFChapterSplitter
     display_dry_run_header
 
     dry_run_context = create_dry_run_context(chapters)
-    file_count = display_all_files_info(dry_run_context)
+    display_all_files_info(dry_run_context)
 
-    puts "\nTotal files to create: #{dry_run_context[:sorted_chapters].size + file_count}"
+    display_total_files_count(dry_run_context)
   end
 
   def create_dry_run_context(chapters)
@@ -498,28 +519,50 @@ class PDFChapterSplitter
   end
 
   def display_all_files_info(context)
-    file_count = 0
-    file_count += display_front_matter_info(context[:sorted_chapters])
+    display_front_matter_info(context[:sorted_chapters])
     display_chapters_info(context[:sorted_chapters], context[:all_chapters], context[:total_pages])
-    file_count += display_appendix_info(context[:sorted_chapters], context[:all_chapters], context[:total_pages])
-    file_count
+    display_appendix_info(context[:sorted_chapters], context[:all_chapters], context[:total_pages])
+  end
+
+  def calculate_extra_files_count(context)
+    count = 0
+    count += 1 if front_matter?(context[:sorted_chapters])
+    count += 1 if appendix?(context[:sorted_chapters], context[:all_chapters], context[:total_pages])
+    count
+  end
+
+  def display_total_files_count(context)
+    total_count = context[:sorted_chapters].size + calculate_extra_files_count(context)
+    puts "\nTotal files to create: #{total_count}"
+  end
+
+  def front_matter?(sorted_chapters)
+    first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
+    first_page > 1
+  end
+
+  def appendix?(sorted_chapters, all_chapters, total_pages)
+    return false if sorted_chapters.empty?
+
+    last_chapter_end = find_chapter_end_page(sorted_chapters.last, all_chapters, total_pages)
+    last_chapter_end < total_pages
   end
 
   def display_dry_run_header
     puts "\n=== Dry Run Mode ==="
     puts "The following files would be created in '#{output_dir}/#{CHAPTERS_DIR}/':"
     puts "Split depth: #{@options[:depth]}"
+    puts "Complete sections: #{@options[:complete] ? 'enabled (--complete)' : 'disabled'}" if @options[:complete]
     puts
   end
 
   def display_front_matter_info(sorted_chapters)
     first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
-    return 0 unless first_page > 1
+    return unless first_page > 1
 
     filename = "000_前付け.pdf"
     pages = "1-#{first_page - 1}"
     puts "  #{filename} (pages #{pages})"
-    1
   end
 
   def display_chapters_info(sorted_chapters, all_chapters, total_pages)
@@ -573,17 +616,16 @@ class PDFChapterSplitter
   end
 
   def display_appendix_info(sorted_chapters, all_chapters, total_pages)
-    return 0 if sorted_chapters.empty?
+    return if sorted_chapters.empty?
 
     last_sorted_chapter = sorted_chapters.max_by { |ch| ch[:page] || 0 }
     last_page = find_chapter_end_page(last_sorted_chapter, all_chapters, total_pages)
 
-    return 0 unless last_page < total_pages
+    return unless last_page < total_pages
 
     filename = "999_付録.pdf"
     pages = "#{last_page + 1}-#{total_pages}"
     puts "  #{filename} (pages #{pages})"
-    1
   end
 
   def prepare_output_directory
@@ -681,7 +723,7 @@ class PDFChapterSplitter
   end
 
   def calculate_end_page_from_next_chapter(chapter, next_chapter)
-    if next_chapter[:page] == chapter[:page]
+    if next_chapter[:page] == chapter[:page] || @options[:complete]
       next_chapter[:page]
     else
       next_chapter[:page] - 1
