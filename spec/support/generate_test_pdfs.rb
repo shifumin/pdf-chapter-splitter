@@ -97,6 +97,17 @@ module TestPDFGenerator
     doc.catalog[:Outlines][:First] = ch1
     doc.catalog[:Outlines][:Last] = ch3
 
+    # Add metadata
+    doc.catalog[:Info] = doc.add({
+                                   Title: "Sample PDF with Outline",
+                                   Author: "Test Author",
+                                   Subject: "Test Subject",
+                                   Keywords: "test, pdf, outline",
+                                   Creator: "PDF Chapter Splitter Test Suite",
+                                   Producer: "HexaPDF",
+                                   CreationDate: Time.now
+                                 })
+
     doc.write(filename, optimize: true)
   end
 

@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require_relative "support/generate_test_pdfs"
+require "hexapdf"
 
 RSpec.describe PDFChapterSplitter do
   before(:all) do
@@ -185,6 +186,29 @@ RSpec.describe PDFChapterSplitter do
 
           pdf_file = File.join(chapters_dir, "001_Chapter 1_ Introduction.pdf")
           expect { PDF::Reader.new(pdf_file) }.not_to raise_error
+        end
+
+        it "preserves metadata from original PDF" do
+          run_script(test_pdf)
+          chapters_dir = File.join(temp_dir, "chapters")
+
+          # Read original PDF metadata
+          original_doc = HexaPDF::Document.open(test_pdf)
+          original_info = original_doc.catalog[:Info]
+
+          # Check metadata in split PDFs
+          ["001_Chapter 1_ Introduction.pdf", "002_Chapter 2_ Getting Started.pdf"].each do |filename|
+            split_pdf_path = File.join(chapters_dir, filename)
+            split_doc = HexaPDF::Document.open(split_pdf_path)
+            split_info = split_doc.catalog[:Info]
+
+            # Verify key metadata fields are preserved
+            expect(split_info[:Title]).to eq(original_info[:Title])
+            expect(split_info[:Author]).to eq(original_info[:Author])
+            expect(split_info[:Subject]).to eq(original_info[:Subject])
+            expect(split_info[:Keywords]).to eq(original_info[:Keywords])
+            expect(split_info[:Creator]).to eq(original_info[:Creator])
+          end
         end
       end
     end
