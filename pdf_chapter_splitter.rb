@@ -309,21 +309,15 @@ class PDFChapterSplitter
   end
 
   def sort_chapters_hierarchically(chapters)
-    # Sort by page first, then by level (parent chapters before child chapters),
-    # then by original index to maintain order
+    # Sort by page first, then by hierarchy and appearance order
     chapters.sort do |a, b|
       page_a = a[:page] || 0
       page_b = b[:page] || 0
 
       if page_a == page_b
-        # If on same page, parent (lower level) comes first
-        level_comparison = a[:level] <=> b[:level]
-        if level_comparison.zero?
-          # If same level, maintain original order
-          (a[:original_index] || 0) <=> (b[:original_index] || 0)
-        else
-          level_comparison
-        end
+        # If on same page, use the original outline order
+        # This preserves the logical structure (e.g., 24.1.1 before 24.2)
+        (a[:original_index] || 0) <=> (b[:original_index] || 0)
       else
         # Otherwise, sort by page number
         page_a <=> page_b

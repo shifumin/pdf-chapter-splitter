@@ -1403,14 +1403,14 @@ RSpec.describe PDFChapterSplitter do
         expect(result[1][:title]).to eq("Chapter 2")
       end
 
-      it "prioritizes parent chapters when on same page" do
+      it "maintains original order when on same page" do
         chapters = [
-          { title: "Section 1.1", page: 5, level: 1 },
-          { title: "Chapter 1", page: 5, level: 0 }
+          { title: "Section 1.1", page: 5, level: 1, original_index: 0 },
+          { title: "Chapter 2", page: 5, level: 0, original_index: 1 }
         ]
         result = splitter.send(:sort_chapters_hierarchically, chapters)
-        expect(result[0][:title]).to eq("Chapter 1")
-        expect(result[1][:title]).to eq("Section 1.1")
+        expect(result[0][:title]).to eq("Section 1.1")
+        expect(result[1][:title]).to eq("Chapter 2")
       end
 
       it "handles nil pages" do
