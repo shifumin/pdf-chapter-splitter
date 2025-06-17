@@ -1432,6 +1432,18 @@ RSpec.describe PDFChapterSplitter do
         expect(result[0][:title]).to eq("Section 9.6.1")
         expect(result[1][:title]).to eq("Section 9.6.2")
       end
+
+      it "preserves logical order for sections on same page (like 24.1.1 before 24.2)" do
+        chapters = [
+          { title: "24.2 cronジョブと冪等性", page: 374, level: 1, original_index: 2 },
+          { title: "24.1.1 イントロダクション", page: 373, level: 2, original_index: 0 },
+          { title: "24.1.2 信頼性という観点", page: 374, level: 2, original_index: 1 }
+        ]
+        result = splitter.send(:sort_chapters_hierarchically, chapters)
+        expect(result[0][:title]).to eq("24.1.1 イントロダクション")
+        expect(result[1][:title]).to eq("24.1.2 信頼性という観点")
+        expect(result[2][:title]).to eq("24.2 cronジョブと冪等性")
+      end
     end
 
     describe "#collect_intermediate_chapters" do

@@ -89,8 +89,8 @@ bundle exec ruby -r pdf-reader -e "puts PDF::Reader.new('file.pdf').outline"
 
 **`sort_chapters_hierarchically`:**
 - Primary sort: page number
-- Secondary sort: hierarchy level (parents before children)
-- Tertiary sort: original index (maintains PDF outline order)
+- For same page: uses original_index to preserve PDF outline order
+- This ensures logical chapter numbering (e.g., 24.1.1 before 24.2 on same page)
 
 ### Error Handling
 
@@ -161,6 +161,8 @@ bundle exec rspec --only-failures  # Re-run failed tests
 - Added test to verify PDF metadata preservation during splitting
 - Enhanced test PDF generation to include metadata (title, author, subject, keywords, creator)
 - Fixed RuboCop violations in test support files
+- Fixed chapter ordering for same-page sections to preserve logical outline order
+- Refactored error handling into separate methods for better SRP compliance
 
 ### 2025-06-16
 - Added `--complete` option for inclusive page ranges
