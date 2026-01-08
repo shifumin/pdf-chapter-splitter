@@ -481,14 +481,17 @@ class PDFChapterSplitter
   end
 
   def extract_page_from_named_dest(reader, name)
-    # First try simple numeric pattern
-    return name.to_i + 1 if name =~ /^\d+$/
-
-    # Try page pattern (e.g., "p35")
+    # ページパターン（例: "p35"）を試す
     return ::Regexp.last_match(1).to_i if name =~ /^p(\d+)$/
 
-    # Resolve through Names dictionary
-    resolve_named_destination(reader, name)
+    # まず Names 辞書から解決を試みる
+    page = resolve_named_destination(reader, name)
+    return page if page
+
+    # フォールバック: Names 辞書がない PDF 用に数値パターンを試す
+    return name.to_i + 1 if name.match?(/^\d+$/)
+
+    nil
   end
 
   def resolve_named_destination(reader, name)

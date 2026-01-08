@@ -85,7 +85,7 @@ Input PDF → [pdf-reader] → Extract Outline → Filter by Depth → Calculate
 | Method | Line | Description |
 |--------|------|-------------|
 | `sort_chapters_hierarchically` | :311 | Sort by page, then original_index for same-page ordering |
-| `find_chapter_end_page` | :747 | Calculate end page considering hierarchy |
+| `find_chapter_end_page` | :743 | Calculate end page considering hierarchy |
 
 ### Implementation Details
 
@@ -166,7 +166,7 @@ When modifying this codebase:
 
 3. **Appendix Detection**: Simplified - assumes all pages after last chapter are appendix.
 
-4. **Named Destinations**: Complex named destinations (non-numeric) may fail to extract page numbers.
+4. **Named Destinations**: Names 辞書を持たない PDF で、複雑な Named Destination が正しく解決されない可能性がある。Names 辞書がある場合は正しく解決される。
 
 ## Debug Commands
 
