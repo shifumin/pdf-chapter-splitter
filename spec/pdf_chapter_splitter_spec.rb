@@ -947,19 +947,28 @@ RSpec.describe PDFChapterSplitter do
       end
     end
 
-    describe "#extract_page_from_string_dest" do
+    describe "#extract_page_from_named_dest" do
+      let(:mock_reader) do
+        reader = instance_double(PDF::Reader)
+        objects = instance_double(PDF::Reader::ObjectHash)
+        allow(reader).to receive(:objects).and_return(objects)
+        allow(objects).to receive(:trailer).and_return({ Root: nil })
+        allow(objects).to receive(:[]).with(nil).and_return(nil)
+        reader
+      end
+
       it "extracts page number from p-prefixed string" do
-        result = splitter.send(:extract_page_from_string_dest, "p35")
+        result = splitter.send(:extract_page_from_named_dest, mock_reader, "p35")
         expect(result).to eq(35)
       end
 
-      it "returns nil for non-matching string format" do
-        result = splitter.send(:extract_page_from_string_dest, "page_35")
-        expect(result).to be_nil
+      it "converts numeric string to 1-indexed page number" do
+        result = splitter.send(:extract_page_from_named_dest, mock_reader, "35")
+        expect(result).to eq(36)
       end
 
-      it "returns nil for complex named destinations" do
-        result = splitter.send(:extract_page_from_string_dest, "Chapter1.Section2")
+      it "returns nil for complex named destinations without Names dictionary" do
+        result = splitter.send(:extract_page_from_named_dest, mock_reader, "Chapter1.Section2")
         expect(result).to be_nil
       end
     end

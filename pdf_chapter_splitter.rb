@@ -439,7 +439,7 @@ class PDFChapterSplitter
     when Array
       extract_page_from_array_dest(reader, dest)
     when String
-      extract_page_from_string_dest(dest)
+      extract_page_from_named_dest(reader, dest)
     end
   rescue PDF::Reader::MalformedPDFError, PDF::Reader::InvalidObjectError
     # Handle specific PDF parsing errors
@@ -469,22 +469,62 @@ class PDFChapterSplitter
     return nil if dest.empty?
 
     page_ref = dest.first
+    return nil unless page_ref.is_a?(PDF::Reader::Reference)
 
-    # Find the page number
-    reader.pages.each_with_index do |page, index|
-      if page_ref.is_a?(PDF::Reader::Reference) && (page.page_object.hash == reader.objects[page_ref].hash)
-        return index + 1
-      end
+    # Use reader's internal page references array for accurate comparison
+    page_refs = reader.objects.page_references
+    page_refs.each_with_index do |ref, index|
+      return index + 1 if ref && ref.id == page_ref.id && ref.gen == page_ref.gen
     end
 
     nil
   end
 
-  def extract_page_from_string_dest(dest)
-    # Handle named destinations (e.g., "p35")
-    return ::Regexp.last_match(1).to_i if dest =~ /^p(\d+)$/
+  def extract_page_from_named_dest(reader, name)
+    # First try simple numeric pattern
+    return name.to_i + 1 if name =~ /^\d+$/
 
-    # For complex named destinations, would need to resolve through Names dictionary
+    # Try page pattern (e.g., "p35")
+    return ::Regexp.last_match(1).to_i if name =~ /^p(\d+)$/
+
+    # Resolve through Names dictionary
+    resolve_named_destination(reader, name)
+  end
+
+  def resolve_named_destination(reader, name)
+    catalog = reader.objects.trailer[:Root]
+    catalog_obj = reader.objects[catalog]
+    return nil unless catalog_obj&.dig(:Names)
+
+    names_dict = reader.objects[catalog_obj[:Names]]
+    return nil unless names_dict[:Dests]
+
+    dests_root = reader.objects[names_dict[:Dests]]
+    dest_array = find_destination_in_tree(reader, dests_root, name)
+    return nil unless dest_array
+
+    extract_page_from_array_dest(reader, dest_array)
+  end
+
+  def find_destination_in_tree(reader, node, name)
+    # Handle leaf node with Names array
+    if node[:Names]
+      names_array = node[:Names]
+      names_array.each_slice(2) do |dest_name, dest_ref|
+        next unless dest_name == name
+        return reader.objects[dest_ref] if dest_ref.is_a?(PDF::Reader::Reference)
+
+        return dest_ref
+      end
+    end
+
+    # Handle intermediate node with Kids
+    node[:Kids]&.each do |kid_ref|
+      kid_node = reader.objects[kid_ref]
+      result = find_destination_in_tree(reader, kid_node, name)
+      return result if result
+    end
+
     nil
   end
 
