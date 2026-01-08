@@ -6,167 +6,174 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PDF Chapter Splitter is a Ruby command-line tool that automatically detects chapter boundaries in PDF files using their outline/bookmark structure and splits them into individual chapter PDFs.
 
-## Common Commands
+## Quick Start
 
 ```bash
 # Install dependencies
 bundle install
 
-# Run the script
-bundle exec ruby pdf_chapter_splitter.rb [options] input.pdf
+# Basic usage - split by top-level chapters
+bundle exec ruby pdf_chapter_splitter.rb input.pdf
 
-# Run tests
-bundle exec rspec
-bundle exec rspec spec/pdf_chapter_splitter_spec.rb:42  # Run specific test
+# Split at section level (depth 2)
+bundle exec ruby pdf_chapter_splitter.rb -d 2 input.pdf
 
-# Run linter
-bundle exec rubocop
-bundle exec rubocop -a  # Auto-fix issues
-bundle exec rubocop -A  # Auto-fix with unsafe corrections
+# Preview what will be done (dry-run)
+bundle exec ruby pdf_chapter_splitter.rb -n input.pdf
 
-# Generate test PDFs (required before running tests)
-bundle exec ruby spec/support/generate_test_pdfs.rb
-
-# Debug PDF outline structure
-bundle exec ruby -r pdf-reader -e "puts PDF::Reader.new('file.pdf').outline"
+# Force overwrite existing output
+bundle exec ruby pdf_chapter_splitter.rb -f input.pdf
 ```
+
+## CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-d, --depth LEVEL` | Split at specified hierarchy level | 1 |
+| `-n, --dry-run` | Show what would be done without doing it | false |
+| `-f, --force` | Remove existing chapters directory if it exists | false |
+| `-v, --verbose` | Show detailed progress | false |
+| `-c, --complete` | Include all pages until next section starts | false |
+| `-h, --help` | Show help message | - |
+
+## Directory Structure
+
+```
+pdf-chapter-splitter/
+├── pdf_chapter_splitter.rb  # Main script (single-file architecture)
+├── Gemfile                  # Dependencies
+├── .rubocop.yml            # Linter configuration
+└── spec/
+    ├── pdf_chapter_splitter_spec.rb  # Test suite (145+ tests)
+    ├── spec_helper.rb
+    ├── support/
+    │   └── generate_test_pdfs.rb     # Test PDF generator
+    └── fixtures/                      # Generated test PDFs (.gitignore)
+```
+
+## Dependencies
+
+| Gem | Purpose | Notes |
+|-----|---------|-------|
+| **pdf-reader** | Read PDF outline/bookmarks | Extracts page numbers and titles |
+| **hexapdf** | Split PDFs, preserve metadata | AGPL-3.0 license |
+| **prawn** | Generate test PDFs | Development only |
 
 ## Architecture
 
-### Core Class: PDFChapterSplitter
+### Processing Flow
 
-**Public API:**
-- `initialize` - Parses command-line options and validates input
-- `run` - Main entry point for PDF processing
-- `extract_chapters` - Extracts chapter information from PDF outline
-- `filter_chapters_by_depth(chapters, depth)` - Filters chapters by hierarchy depth
-- `split_pdf(chapters)` - Splits PDF into individual chapter files
+```
+Input PDF → [pdf-reader] → Extract Outline → Filter by Depth → Calculate Page Ranges → [hexapdf] → Split PDFs
+                ↓
+           Chapter Data
+           { title:, page:, level:, original_index:, parent_indices: }
+```
 
-### Key Implementation Details
+### Public API (pdf_chapter_splitter.rb)
 
-1. **PDF Processing Flow:**
-   - Parse command-line options with OptionParser
-   - Extract outline structure using pdf-reader's low-level objects API
-   - Filter chapters based on specified depth level
-   - Calculate page ranges for each chapter/section
-   - Split PDF using HexaPDF, preserving metadata
+| Method | Line | Description |
+|--------|------|-------------|
+| `initialize` | :13 | Parse CLI options and validate input |
+| `run` | :19 | Main entry point |
+| `filter_chapters_by_depth` | :25 | Filter chapters by hierarchy level |
+| `extract_chapters` | :31 | Extract chapter info from PDF outline |
+| `split_pdf` | :40 | Split PDF into individual files |
 
-2. **Outline Parsing:**
+### Key Internal Methods
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `sort_chapters_hierarchically` | :311 | Sort by page, then original_index for same-page ordering |
+| `find_chapter_end_page` | :747 | Calculate end page considering hierarchy |
+
+### Implementation Details
+
+1. **Outline Parsing:**
    - Uses pdf-reader's objects API to access PDF catalog
    - Recursively traverses outline items via First/Next references
    - Handles both direct destinations and action-based destinations
-   - Extracts page numbers from PDF::Reader::Reference objects
 
-3. **Character Encoding:**
+2. **Character Encoding:**
    - Detects and handles UTF-16BE encoded text (common in Japanese PDFs)
-   - Removes BOM (Byte Order Mark) characters
-   - Converts full-width spaces to half-width
+   - Removes BOM characters, converts full-width spaces
 
-4. **Depth-Based Splitting:**
+3. **Depth-Based Splitting:**
    - Depth 1: Top-level chapters only
    - Depth 2+: Includes intermediate levels automatically
    - Chapters without children at target depth are included as complete chapters
-   - Parent context included in filenames for nested sections
 
-5. **File Naming:**
-   - 3-digit padding: `000_前付け.pdf`, `001_Chapter.pdf`, `999_付録.pdf`
+4. **File Naming:**
+   - 3-digit padding: `000_前付け.pdf`, `001_Chapter.pdf`
    - Invalid characters (`/:*?"<>|`) replaced with underscores
-   - Nested sections include parent context: `002_Chapter1_Section1.1.pdf`
+   - Nested sections: `002_Chapter1_Section1.1.pdf`
 
-### Critical Methods
+## Testing
 
-**`filter_chapters_by_depth`:**
-- Builds parent-child relationships via `parent_indices`
-- Includes chapters at target depth
-- Includes parent chapters that have no children at target depth
-- Maintains original order with `original_index`
+```bash
+# REQUIRED: Generate test PDFs first (one-time setup)
+bundle exec ruby spec/support/generate_test_pdfs.rb
 
-**`find_chapter_end_page`:**
-- Finds next chapter at same or higher level
-- For nested chapters, checks parent's next sibling
-- Handles edge cases where chapters start on same page
-- Respects `--complete` option for inclusive page ranges
+# Run all tests
+bundle exec rspec
 
-**`sort_chapters_hierarchically`:**
-- Primary sort: page number
-- For same page: uses original_index to preserve PDF outline order
-- This ensures logical chapter numbering (e.g., 24.1.1 before 24.2 on same page)
+# Run specific test
+bundle exec rspec spec/pdf_chapter_splitter_spec.rb:42
 
-### Error Handling
-
-Handles specific error types:
-- `PDF::Reader::MalformedPDFError` - Corrupted PDFs
-- `PDF::Reader::InvalidObjectError` - Invalid PDF structure
-- `NoMethodError` - Unexpected PDF structure (specific checks for `objects` and `[]`)
-- Command-line validation errors
-- File system errors (missing files, existing directories)
-
-## Testing Strategy
-
-**Test Organization:**
-- `spec/pdf_chapter_splitter_spec.rb` - Main test suite (1700+ lines, 145+ tests)
-- `spec/support/generate_test_pdfs.rb` - Generates test PDFs with various structures
-- `spec/fixtures/` - Generated test PDFs (not checked in)
+# Documentation format
+bundle exec rspec -fd
+```
 
 **Key Test Scenarios:**
 - Multiple depth levels (1-10+)
-- Same-page chapters
-- Missing page numbers
+- Same-page chapters (ordering by original_index)
 - Japanese/UTF-16BE encoding
-- Complex nested outlines
-- Edge cases (empty titles, nil pages, deep nesting)
-
-**Running Specific Tests:**
-```bash
-bundle exec rspec -fd  # Full documentation format
-bundle exec rspec --only-failures  # Re-run failed tests
-```
+- Edge cases: empty titles, nil pages, deep nesting
 
 ## Code Quality
+
+```bash
+# Run linter
+bundle exec rubocop
+
+# Auto-fix issues
+bundle exec rubocop -a
+
+# Auto-fix with unsafe corrections
+bundle exec rubocop -A
+```
 
 **RuboCop Configuration:**
 - Ruby 3.4 target
 - 120 character line limit
-- RSpec/ExampleLength: Max 16 lines
-- Test support files excluded from complexity metrics
-- Double quotes enforced for strings
+- Double quotes enforced
 
-**Testing Requirements:**
-- Test public API, not private implementation
-- Each test should have single responsibility
-- Use descriptive contexts and examples
-- Mock external dependencies when appropriate
+## Implementation Guidelines
+
+When modifying this codebase:
+
+1. **Single-file architecture**: All logic stays in `pdf_chapter_splitter.rb`
+2. **Public API stability**: Do not change signatures of public methods (initialize, run, extract_chapters, filter_chapters_by_depth, split_pdf)
+3. **Error handling**: Catch specific error types, use `error_exit` for consistent error output
+4. **Chapter data structure**: Always include `{ title:, page:, level:, original_index: }`
+5. **Test coverage**: Add tests for new functionality, test public API only
 
 ## Known Issues
 
-1. **Prawn Circular Dependency Warning**: Appears during test runs due to Prawn 2.5.0 internal issue. Safe to ignore - only affects test PDF generation, not production code.
+1. **Prawn Circular Dependency Warning**: Appears during test runs due to Prawn 2.5.0 internal issue. Safe to ignore.
 
-2. **HexaPDF License**: Uses AGPL-3.0 license. Commercial users should consider HexaPDF's commercial license.
+2. **HexaPDF License**: Uses AGPL-3.0. Commercial users should consider HexaPDF's commercial license.
 
 3. **Appendix Detection**: Simplified - assumes all pages after last chapter are appendix.
 
 4. **Named Destinations**: Complex named destinations (non-numeric) may fail to extract page numbers.
 
-## Development Workflow
+## Debug Commands
 
-1. Make changes to implementation
-2. Run tests: `bundle exec rspec`
-3. Fix RuboCop violations: `bundle exec rubocop -a`
-4. Test with real PDFs using various options
-5. Update documentation if behavior changes
+```bash
+# View PDF outline structure
+bundle exec ruby -r pdf-reader -e "puts PDF::Reader.new('file.pdf').outline"
 
-## Recent Updates
-
-### 2025-06-17
-- Added test to verify PDF metadata preservation during splitting
-- Enhanced test PDF generation to include metadata (title, author, subject, keywords, creator)
-- Fixed RuboCop violations in test support files
-- Fixed chapter ordering for same-page sections to preserve logical outline order
-- Refactored error handling into separate methods for better SRP compliance
-
-### 2025-06-16
-- Added `--complete` option for inclusive page ranges
-- Enhanced SRP compliance with focused helper methods
-- Fixed same-page chapter ordering issues
-- Improved error handling specificity
-- Test suite expanded to 145+ tests
+# Count total pages
+bundle exec ruby -r pdf-reader -e "puts PDF::Reader.new('file.pdf').page_count"
+```

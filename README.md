@@ -22,7 +22,7 @@ A Ruby command-line tool that automatically detects chapter boundaries in PDF fi
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/pdf-chapter-splitter.git
+git clone https://github.com/shifumin/pdf-chapter-splitter.git
 cd pdf-chapter-splitter
 ```
 
@@ -166,23 +166,12 @@ Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automat
 
 ## Development
 
-### Generating Test PDFs
+### Test Setup
+
+Test PDFs must be generated before running tests:
 
 ```bash
 bundle exec ruby spec/support/generate_test_pdfs.rb
-```
-
-### Running Tests
-
-```bash
-bundle exec rspec
-```
-
-### Running Linter
-
-```bash
-bundle exec rubocop
-bundle exec rubocop -a  # Auto-fix issues
 ```
 
 ## Troubleshooting
@@ -213,4 +202,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This project uses the following libraries:
 - HexaPDF (AGPL-3.0) - Used for PDF manipulation
 - Other dependencies are listed in Gemfile with their respective licenses
-
