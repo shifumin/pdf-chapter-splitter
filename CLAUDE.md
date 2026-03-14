@@ -6,25 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PDF Chapter Splitter is a Ruby command-line tool that automatically detects chapter boundaries in PDF files using their outline/bookmark structure and splits them into individual chapter PDFs.
 
-## Quick Start
-
-```bash
-# Install dependencies
-bundle install
-
-# Basic usage - split by top-level chapters
-bundle exec ruby pdf_chapter_splitter.rb input.pdf
-
-# Split at section level (depth 2)
-bundle exec ruby pdf_chapter_splitter.rb -d 2 input.pdf
-
-# Preview what will be done (dry-run)
-bundle exec ruby pdf_chapter_splitter.rb -n input.pdf
-
-# Force overwrite existing output
-bundle exec ruby pdf_chapter_splitter.rb -f input.pdf
-```
-
 ## Architecture
 
 ### Processing Flow
