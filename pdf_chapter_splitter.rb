@@ -7,7 +7,7 @@ require "pdf-reader"
 require "hexapdf"
 
 class PDFChapterSplitter
-  INVALID_FILENAME_CHARS = %r{[/:\*\?"<>|]}
+  INVALID_FILENAME_CHARS = %r{[/:*?"<>|]}
   CHAPTERS_DIR = "chapters"
   FRONT_MATTER_FILENAME = "000_前付け.pdf"
   APPENDIX_FILENAME = "999_付録.pdf"
