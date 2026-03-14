@@ -1,6 +1,6 @@
 # PDF Chapter Splitter
 
-A Ruby command-line tool that automatically detects chapter boundaries in PDF files using their outline/bookmark structure and splits them into individual chapter PDFs. Perfect for breaking down large documents like textbooks, manuals, or reports into manageable chapter-based files.
+A Ruby command-line tool that automatically detects chapter boundaries in PDF files using their outline/bookmark structure and splits them into individual chapter PDFs.
 
 ## Features
 
@@ -136,14 +136,6 @@ The tool creates files with the following naming convention:
 Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automatically replaced with underscores.
 
 **Note:** When using depth levels 2 or higher, filenames include parent context as shown in the "Understanding Depth Levels" section above.
-
-## How It Works
-
-1. **Outline Detection**: The tool reads the PDF's built-in outline/bookmark structure
-2. **Chapter Identification**: Identifies chapters at the specified depth level (default: top-level)
-3. **Depth-Based Splitting**: Creates PDF files at the specified hierarchy level, including intermediate levels
-4. **Page Range Calculation**: Determines accurate page boundaries for each section, handling edge cases like chapters starting on the same page
-5. **PDF Splitting**: Creates new PDF files for each section, preserving original metadata
 
 ## Development
 

@@ -41,8 +41,6 @@ Input PDF → [pdf-reader] → Extract Outline → Filter by Depth → Calculate
 
 ## Implementation Guidelines
 
-When modifying this codebase:
-
 1. **Single-file architecture**: All logic stays in `pdf_chapter_splitter.rb`
 2. **Public API stability**: Do not change signatures of public methods (initialize, run, extract_chapters, filter_chapters_by_depth, split_pdf)
 3. **Error handling**: Catch specific error types, use `error_exit` for consistent error output
@@ -54,11 +52,9 @@ When modifying this codebase:
 
 1. **Prawn Circular Dependency Warning**: Appears during test runs due to Prawn 2.5.0 internal issue. On Ruby 4.0+, this warning causes rspec to exit with code 1 even when all tests pass. Safe to ignore.
 
-2. **HexaPDF License**: Uses AGPL-3.0. Commercial users should consider HexaPDF's commercial license.
+2. **Appendix Detection**: Simplified - assumes all pages after last chapter are appendix.
 
-3. **Appendix Detection**: Simplified - assumes all pages after last chapter are appendix.
-
-4. **Named Destinations**: Complex named destinations may not resolve correctly in PDFs without a Names dictionary. PDFs with a Names dictionary resolve correctly.
+3. **Named Destinations**: Complex named destinations may not resolve correctly in PDFs without a Names dictionary. PDFs with a Names dictionary resolve correctly.
 
 ## Debug Commands
 
