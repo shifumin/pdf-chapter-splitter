@@ -62,35 +62,6 @@ Input PDF → [pdf-reader] → Extract Outline → Filter by Depth → Calculate
    - Depth 2+: Includes intermediate levels automatically
    - Chapters without children at target depth are included as complete chapters
 
-## Testing
-
-```bash
-# REQUIRED: Generate test PDFs first (one-time setup)
-bundle exec ruby spec/support/generate_test_pdfs.rb
-
-# Run all tests
-bundle exec rspec
-
-# Run specific test
-bundle exec rspec spec/pdf_chapter_splitter_spec.rb:42
-
-# Documentation format
-bundle exec rspec -fd
-```
-
-## Code Quality
-
-```bash
-# Run linter
-bundle exec rubocop
-
-# Auto-fix issues
-bundle exec rubocop -a
-
-# Auto-fix with unsafe corrections
-bundle exec rubocop -A
-```
-
 ## Implementation Guidelines
 
 When modifying this codebase:
@@ -100,6 +71,7 @@ When modifying this codebase:
 3. **Error handling**: Catch specific error types, use `error_exit` for consistent error output
 4. **Chapter data structure**: Always include `{ title:, page:, level:, original_index: }`
 5. **Test coverage**: Add tests for new functionality, test public API only
+6. **Test fixtures**: Run `bundle exec ruby spec/support/generate_test_pdfs.rb` before first test run
 
 ## Known Issues
 
