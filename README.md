@@ -15,7 +15,7 @@ A Ruby command-line tool that automatically detects chapter boundaries in PDF fi
 
 ## Requirements
 
-- Ruby 3.4.5 or higher
+- Ruby 4.0.1 or higher
 - Bundler
 
 ## Installation
@@ -172,6 +172,12 @@ Test PDFs must be generated before running tests:
 
 ```bash
 bundle exec ruby spec/support/generate_test_pdfs.rb
+```
+
+Run the test suite:
+
+```bash
+bundle exec rspec
 ```
 
 ## Troubleshooting

@@ -44,7 +44,7 @@ pdf-chapter-splitter/
 ├── Gemfile                  # Dependencies
 ├── .rubocop.yml            # Linter configuration
 └── spec/
-    ├── pdf_chapter_splitter_spec.rb  # Test suite (145+ tests)
+    ├── pdf_chapter_splitter_spec.rb  # Test suite
     ├── spec_helper.rb
     ├── support/
     │   └── generate_test_pdfs.rb     # Test PDF generator
@@ -72,20 +72,13 @@ Input PDF → [pdf-reader] → Extract Outline → Filter by Depth → Calculate
 
 ### Public API (pdf_chapter_splitter.rb)
 
-| Method | Line | Description |
-|--------|------|-------------|
-| `initialize` | :13 | Parse CLI options and validate input |
-| `run` | :19 | Main entry point |
-| `filter_chapters_by_depth` | :25 | Filter chapters by hierarchy level |
-| `extract_chapters` | :31 | Extract chapter info from PDF outline |
-| `split_pdf` | :40 | Split PDF into individual files |
-
-### Key Internal Methods
-
-| Method | Line | Description |
-|--------|------|-------------|
-| `sort_chapters_hierarchically` | :311 | Sort by page, then original_index for same-page ordering |
-| `find_chapter_end_page` | :743 | Calculate end page considering hierarchy |
+| Method | Description |
+|--------|-------------|
+| `initialize` | Parse CLI options and validate input |
+| `run` | Main entry point |
+| `filter_chapters_by_depth` | Filter chapters by hierarchy level |
+| `extract_chapters` | Extract chapter info from PDF outline (memoized) |
+| `split_pdf` | Split PDF into individual files |
 
 ### Implementation Details
 
@@ -160,13 +153,13 @@ When modifying this codebase:
 
 ## Known Issues
 
-1. **Prawn Circular Dependency Warning**: Appears during test runs due to Prawn 2.5.0 internal issue. Safe to ignore.
+1. **Prawn Circular Dependency Warning**: Appears during test runs due to Prawn 2.5.0 internal issue. On Ruby 4.0+, this warning causes rspec to exit with code 1 even when all tests pass. Safe to ignore.
 
 2. **HexaPDF License**: Uses AGPL-3.0. Commercial users should consider HexaPDF's commercial license.
 
 3. **Appendix Detection**: Simplified - assumes all pages after last chapter are appendix.
 
-4. **Named Destinations**: Names 辞書を持たない PDF で、複雑な Named Destination が正しく解決されない可能性がある。Names 辞書がある場合は正しく解決される。
+4. **Named Destinations**: Complex named destinations may not resolve correctly in PDFs without a Names dictionary. PDFs with a Names dictionary resolve correctly.
 
 ## Debug Commands
 
