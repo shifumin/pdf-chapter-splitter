@@ -9,6 +9,8 @@ require "hexapdf"
 class PDFChapterSplitter
   INVALID_FILENAME_CHARS = %r{[/:\*\?"<>|]}
   CHAPTERS_DIR = "chapters"
+  FRONT_MATTER_FILENAME = "000_前付け.pdf"
+  APPENDIX_FILENAME = "999_付録.pdf"
 
   def initialize
     @options = parse_options
@@ -29,8 +31,11 @@ class PDFChapterSplitter
   end
 
   def extract_chapters
+    return @cached_chapters if instance_variable_defined?(:@cached_chapters)
+
     reader = PDF::Reader.new(@pdf_path)
-    extract_chapters_from_reader(reader)
+    @cached_page_count = reader.page_count
+    @cached_chapters = extract_chapters_from_reader(reader)
   rescue PDF::Reader::MalformedPDFError => e
     error_exit "Error: The PDF file appears to be corrupted. #{e.message}"
   rescue StandardError => e
@@ -271,12 +276,6 @@ class PDFChapterSplitter
     chapters_with_children
   end
 
-  def children_at_depth?(chapters, parent_idx, target_depth)
-    chapters.any? do |ch|
-      ch[:parent_indices]&.include?(parent_idx) && ch[:level] == target_depth
-    end
-  end
-
   def any_children?(chapters, parent_idx)
     chapters.any? do |ch|
       ch[:parent_indices]&.include?(parent_idx)
@@ -309,20 +308,7 @@ class PDFChapterSplitter
   end
 
   def sort_chapters_hierarchically(chapters)
-    # Sort by page first, then by hierarchy and appearance order
-    chapters.sort do |a, b|
-      page_a = a[:page] || 0
-      page_b = b[:page] || 0
-
-      if page_a == page_b
-        # If on same page, use the original outline order
-        # This preserves the logical structure (e.g., 24.1.1 before 24.2)
-        (a[:original_index] || 0) <=> (b[:original_index] || 0)
-      else
-        # Otherwise, sort by page number
-        page_a <=> page_b
-      end
-    end
+    chapters.sort_by { |ch| [ch[:page] || 0, ch[:original_index] || 0] }
   end
 
   def extract_chapters_from_reader(reader)
@@ -552,7 +538,8 @@ class PDFChapterSplitter
   end
 
   def pdf_page_count
-    PDF::Reader.new(@pdf_path).page_count
+    extract_chapters unless instance_variable_defined?(:@cached_page_count)
+    @cached_page_count
   end
 
   def display_all_files_info(context)
@@ -597,7 +584,7 @@ class PDFChapterSplitter
     first_page = sorted_chapters.empty? ? 1 : (sorted_chapters.first[:page] || 1)
     return unless first_page > 1
 
-    filename = "000_前付け.pdf"
+    filename = FRONT_MATTER_FILENAME
     pages = "1-#{first_page - 1}"
     puts "  #{filename} (pages #{pages})"
   end
@@ -616,19 +603,9 @@ class PDFChapterSplitter
   def display_chapter_line(chapter, index, all_chapters, total_pages)
     start_page = chapter[:page] || 1
     end_page = find_chapter_end_page(chapter, all_chapters, total_pages)
-    filename = format_chapter_filename_for_display(chapter, index, all_chapters)
+    filename = build_chapter_filename(chapter, index, all_chapters)
 
     puts "  #{filename} (pages #{start_page}-#{end_page})"
-  end
-
-  def format_chapter_filename_for_display(chapter, index, all_chapters)
-    if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
-      parent_idx = chapter[:parent_indices].last
-      parent_title = all_chapters[parent_idx][:title] if parent_idx
-      format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
-    else
-      format_chapter_filename(index + 1, chapter[:title])
-    end
   end
 
   def display_verbose_warnings(chapter, all_chapters)
@@ -637,7 +614,7 @@ class PDFChapterSplitter
   end
 
   def check_same_page_start(chapter, all_chapters)
-    return unless chapter[:parent_indices] && !chapter[:parent_indices].empty?
+    return unless parent?(chapter)
 
     parent_idx = chapter[:parent_indices].last
     parent = all_chapters[parent_idx]
@@ -660,7 +637,7 @@ class PDFChapterSplitter
 
     return unless last_page < total_pages
 
-    filename = "999_付録.pdf"
+    filename = APPENDIX_FILENAME
     pages = "#{last_page + 1}-#{total_pages}"
     puts "  #{filename} (pages #{pages})"
   end
@@ -700,7 +677,7 @@ class PDFChapterSplitter
     return unless first_page > 1
 
     log "Extracting front matter..." if @options[:verbose]
-    extract_pages(doc, 1, first_page - 1, "000_前付け.pdf")
+    extract_pages(doc, 1, first_page - 1, FRONT_MATTER_FILENAME)
   end
 
   def process_chapters(doc, sorted_chapters, all_chapters, total_pages)
@@ -719,7 +696,7 @@ class PDFChapterSplitter
   end
 
   def build_chapter_filename(chapter, index, all_chapters)
-    if @options[:depth] > 1 && chapter[:parent_indices] && !chapter[:parent_indices].empty?
+    if @options[:depth] > 1 && parent?(chapter)
       parent_idx = chapter[:parent_indices].last
       parent_title = all_chapters[parent_idx][:title] if parent_idx
       format_chapter_filename_with_parent(index + 1, chapter[:title], parent_title)
@@ -737,7 +714,7 @@ class PDFChapterSplitter
     return unless last_page < total_pages
 
     log "Extracting appendix..." if @options[:verbose]
-    extract_pages(doc, last_page + 1, total_pages, "999_付録.pdf")
+    extract_pages(doc, last_page + 1, total_pages, APPENDIX_FILENAME)
   end
 
   def find_chapter_end_page(chapter, all_chapters, total_pages)
@@ -774,10 +751,10 @@ class PDFChapterSplitter
   end
 
   def find_next_chapter_at_same_or_higher_level(current_idx, current_level, all_chapters)
-    all_chapters.find do |ch|
-      ch_idx = get_chapter_index(ch, all_chapters)
-      ch_idx && ch_idx > current_idx && ch[:level] <= current_level
+    ((current_idx + 1)...all_chapters.size).each do |i|
+      return all_chapters[i] if all_chapters[i][:level] <= current_level
     end
+    nil
   end
 
   def parent?(chapter)

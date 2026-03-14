@@ -1008,35 +1008,6 @@ RSpec.describe PDFChapterSplitter do
       end
     end
 
-    describe "#children_at_depth?" do
-      it "returns true when children exist at target depth" do
-        chapters = [
-          { level: 0, parent_indices: nil },
-          { level: 1, parent_indices: [0] }
-        ]
-        result = splitter.send(:children_at_depth?, chapters, 0, 1)
-        expect(result).to be true
-      end
-
-      it "returns false when no children at target depth" do
-        chapters = [
-          { level: 0, parent_indices: nil },
-          { level: 2, parent_indices: [0] }
-        ]
-        result = splitter.send(:children_at_depth?, chapters, 0, 1)
-        expect(result).to be false
-      end
-
-      it "handles nil parent_indices" do
-        chapters = [
-          { level: 0, parent_indices: nil },
-          { level: 1, parent_indices: nil }
-        ]
-        result = splitter.send(:children_at_depth?, chapters, 0, 1)
-        expect(result).to be false
-      end
-    end
-
     describe "#should_include_chapter?" do
       it "includes chapter at exact target depth" do
         chapter = { level: 1 }
@@ -1337,6 +1308,7 @@ RSpec.describe PDFChapterSplitter do
       it "handles extremely large outlines (1000+ chapters)" do
         reader = instance_double(PDF::Reader)
         allow(PDF::Reader).to receive(:new).and_return(reader)
+        allow(reader).to receive(:page_count).and_return(1000)
 
         # Mock large outline structure
         large_outline = []
@@ -1716,7 +1688,9 @@ RSpec.describe PDFChapterSplitter do
 
     describe "#pdf_page_count" do
       it "returns page count from PDF" do
-        allow(PDF::Reader).to receive(:new).and_return(instance_double(PDF::Reader, page_count: 42))
+        reader = instance_double(PDF::Reader, page_count: 42)
+        allow(PDF::Reader).to receive(:new).and_return(reader)
+        allow(splitter).to receive(:extract_chapters_from_reader).and_return([])
         result = splitter.send(:pdf_page_count)
         expect(result).to eq(42)
       end
