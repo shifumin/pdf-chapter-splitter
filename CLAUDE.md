@@ -1,6 +1,6 @@
-# Project Overview
+# PDF Chapter Splitter
 
-PDF Chapter Splitter is a Ruby command-line tool that automatically detects chapter boundaries in PDF files using their outline/bookmark structure and splits them into individual chapter PDFs.
+A Ruby CLI tool that splits PDF files into individual chapter PDFs using their outline/bookmark structure.
 
 ## Architecture
 
