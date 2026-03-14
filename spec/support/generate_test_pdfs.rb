@@ -322,5 +322,5 @@ end
 # Generate test PDFs if run directly
 if __FILE__ == $PROGRAM_NAME
   TestPDFGenerator.generate_all
-  puts "Test PDFs generated in spec/fixtures/"
+  $stdout.puts "Test PDFs generated in spec/fixtures/"
 end
