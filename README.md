@@ -102,16 +102,6 @@ Split at section level (depth 2):
 bundle exec ruby pdf_chapter_splitter.rb -d 2 document.pdf
 ```
 
-Force overwrite existing output:
-```bash
-bundle exec ruby pdf_chapter_splitter.rb -f document.pdf
-```
-
-Show detailed progress:
-```bash
-bundle exec ruby pdf_chapter_splitter.rb -v document.pdf
-```
-
 Combine options (preview section-level split with verbose output):
 ```bash
 bundle exec ruby pdf_chapter_splitter.rb -d 2 -n -v document.pdf
@@ -151,15 +141,9 @@ Invalid filename characters (`/`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) are automat
 
 1. **Outline Detection**: The tool reads the PDF's built-in outline/bookmark structure
 2. **Chapter Identification**: Identifies chapters at the specified depth level (default: top-level)
-3. **Intelligent Splitting**: Based on the depth level, creates appropriate PDF files as shown in the examples above
+3. **Depth-Based Splitting**: Creates PDF files at the specified hierarchy level, including intermediate levels
 4. **Page Range Calculation**: Determines accurate page boundaries for each section, handling edge cases like chapters starting on the same page
 5. **PDF Splitting**: Creates new PDF files for each section, preserving original metadata
-
-## Requirements for PDFs
-
-- PDFs must have a proper outline/bookmark structure
-- The tool relies on the PDF's internal navigation structure
-- PDFs without outlines will show an error message
 
 ## Development
 
@@ -190,18 +174,11 @@ The PDF doesn't have bookmarks/outline. This tool requires PDFs with proper chap
 ### "chapters directory already exists"
 Use the `--force` option to overwrite existing output, or manually remove the directory.
 
-### Encoding Issues
-The tool handles UTF-16BE and UTF-8 encoded text. If you encounter issues with special characters, please report them.
-
-### Invalid Command-Line Arguments
-The tool validates all command-line arguments and provides clear error messages for invalid inputs (e.g., non-integer depth values).
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Dependencies
+## Dependencies
 
-This project uses the following libraries:
 - HexaPDF (AGPL-3.0) - Used for PDF manipulation
 - Other dependencies are listed in Gemfile with their respective licenses
