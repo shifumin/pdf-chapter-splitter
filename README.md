@@ -12,7 +12,7 @@ A Ruby command-line tool that automatically detects chapter boundaries in PDF fi
 
 ## Requirements
 
-- Ruby 4.0.1 or higher
+- Ruby 3.4 or higher
 - Bundler
 
 ## Installation
