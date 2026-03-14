@@ -4,14 +4,11 @@ A Ruby command-line tool that automatically detects chapter boundaries in PDF fi
 
 ## Features
 
-- 📖 Automatically detects chapters from PDF outline/bookmarks
-- ✂️ Splits PDF into individual chapter files
-- 🏗️ Flexible depth-based splitting (split by chapters, sections, or subsections)
-- 🇯🇵 Supports Japanese and international character sets
-- 📋 Handles front matter and appendices
-- 🔍 Dry-run mode to preview splitting before execution
-- 💪 Force mode to overwrite existing output
-- 📊 Verbose mode for detailed progress tracking
+- Automatically detects chapters from PDF outline/bookmarks
+- Splits PDF into individual chapter files with metadata preserved
+- Flexible depth-based splitting (chapters, sections, or subsections)
+- Supports Japanese and international character sets (UTF-16BE, UTF-8)
+- Dry-run mode to preview splitting before execution
 
 ## Requirements
 
