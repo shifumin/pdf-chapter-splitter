@@ -25,40 +25,6 @@ bundle exec ruby pdf_chapter_splitter.rb -n input.pdf
 bundle exec ruby pdf_chapter_splitter.rb -f input.pdf
 ```
 
-## CLI Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-d, --depth LEVEL` | Split at specified hierarchy level | 1 |
-| `-n, --dry-run` | Show what would be done without doing it | false |
-| `-f, --force` | Remove existing chapters directory if it exists | false |
-| `-v, --verbose` | Show detailed progress | false |
-| `-c, --complete` | Include all pages until next section starts | false |
-| `-h, --help` | Show help message | - |
-
-## Directory Structure
-
-```
-pdf-chapter-splitter/
-├── pdf_chapter_splitter.rb  # Main script (single-file architecture)
-├── Gemfile                  # Dependencies
-├── .rubocop.yml            # Linter configuration
-└── spec/
-    ├── pdf_chapter_splitter_spec.rb  # Test suite
-    ├── spec_helper.rb
-    ├── support/
-    │   └── generate_test_pdfs.rb     # Test PDF generator
-    └── fixtures/                      # Generated test PDFs (.gitignore)
-```
-
-## Dependencies
-
-| Gem | Purpose | Notes |
-|-----|---------|-------|
-| **pdf-reader** | Read PDF outline/bookmarks | Extracts page numbers and titles |
-| **hexapdf** | Split PDFs, preserve metadata | AGPL-3.0 license |
-| **prawn** | Generate test PDFs | Development only |
-
 ## Architecture
 
 ### Processing Flow
@@ -96,11 +62,6 @@ Input PDF → [pdf-reader] → Extract Outline → Filter by Depth → Calculate
    - Depth 2+: Includes intermediate levels automatically
    - Chapters without children at target depth are included as complete chapters
 
-4. **File Naming:**
-   - 3-digit padding: `000_前付け.pdf`, `001_Chapter.pdf`
-   - Invalid characters (`/:*?"<>|`) replaced with underscores
-   - Nested sections: `002_Chapter1_Section1.1.pdf`
-
 ## Testing
 
 ```bash
@@ -117,12 +78,6 @@ bundle exec rspec spec/pdf_chapter_splitter_spec.rb:42
 bundle exec rspec -fd
 ```
 
-**Key Test Scenarios:**
-- Multiple depth levels (1-10+)
-- Same-page chapters (ordering by original_index)
-- Japanese/UTF-16BE encoding
-- Edge cases: empty titles, nil pages, deep nesting
-
 ## Code Quality
 
 ```bash
@@ -135,11 +90,6 @@ bundle exec rubocop -a
 # Auto-fix with unsafe corrections
 bundle exec rubocop -A
 ```
-
-**RuboCop Configuration:**
-- Ruby 3.4 target
-- 120 character line limit
-- Double quotes enforced
 
 ## Implementation Guidelines
 
