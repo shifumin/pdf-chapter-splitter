@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-ruby File.read(".ruby-version").strip
+ruby ">= 4.0"
 
 gem "hexapdf", "~> 0.47" # PDF分割処理用
 gem "pdf-reader", "~> 2.12" # PDFアウトライン読み取り用
