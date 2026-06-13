@@ -56,10 +56,9 @@ RSpec.describe PDFChapterSplitter do
         ARGV.clear
         ARGV << "nonexistent.pdf"
 
-        splitter = described_class.new
-
-        # Capture the error output
-        expect { splitter.run }.to raise_error(SystemExit) do |error|
+        # The constructor validates input and exits when the file is missing,
+        # so wrap the construction itself to capture the SystemExit.
+        expect { described_class.new }.to raise_error(SystemExit) do |error|
           expect(error.status).to eq(1)
         end
 
